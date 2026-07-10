@@ -290,12 +290,6 @@ const Collection = ({ collection, searchText }: CollectionProps) => {
     }
   }, [isCollectionFocused]);
 
-  if (searchText && (searchText as string).length) {
-    if (!doesCollectionHaveItemsMatchingSearchText(collection, searchText)) {
-      return null;
-    }
-  }
-
   const collectionRowClassName = classnames('flex py-1 collection-name items-center', {
     'item-hovered': isOver && dropType === 'adjacent',
     'drop-target': isOver && dropType === 'inside',
@@ -420,6 +414,12 @@ const Collection = ({ collection, searchText }: CollectionProps) => {
       onClick: handleRemove
     }
   ], [hasCopiedItems, collection.uid]);
+
+  if (searchText && searchText.length) {
+    if (!doesCollectionHaveItemsMatchingSearchText(collection, searchText)) {
+      return null;
+    }
+  }
 
   return (
     <StyledWrapper className="flex flex-col" id={`collection-${collection.name.replace(/\s+/g, '-').toLowerCase()}`}>

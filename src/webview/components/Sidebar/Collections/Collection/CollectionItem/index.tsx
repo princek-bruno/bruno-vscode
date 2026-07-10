@@ -543,6 +543,15 @@ const CollectionItem = ({ item, collectionUid, collectionPathname, searchText }:
     'is-sidebar-dragging': isSidebarDragging
   });
 
+  const { folderItems, requestItems } = useMemo(() => {
+    const children = item.items || [];
+    const folders = sortByNameThenSequence(filter(children, (i: any) => isItemAFolder(i)));
+    const requests = filter(children, (i: any) => isItemARequest(i)).sort((a: any, b: any) => a.seq - b.seq);
+    return { folderItems: folders, requestItems: requests };
+  }, [item.items]);
+  const indents = useMemo(() => range(item.depth), [item.depth]);
+  const showEmptyFolderMessage = isFolder && !hasSearchText && !folderItems?.length && !requestItems?.length;
+
   if (searchText && searchText.length) {
     if (isItemARequest(item)) {
       if (!doesRequestMatchSearchText(item, searchText)) {
@@ -554,15 +563,6 @@ const CollectionItem = ({ item, collectionUid, collectionPathname, searchText }:
       }
     }
   }
-
-  const { folderItems, requestItems } = useMemo(() => {
-    const children = item.items || [];
-    const folders = sortByNameThenSequence(filter(children, (i: any) => isItemAFolder(i)));
-    const requests = filter(children, (i: any) => isItemARequest(i)).sort((a: any, b: any) => a.seq - b.seq);
-    return { folderItems: folders, requestItems: requests };
-  }, [item.items]);
-  const indents = useMemo(() => range(item.depth), [item.depth]);
-  const showEmptyFolderMessage = isFolder && !hasSearchText && !folderItems?.length && !requestItems?.length;
 
   return (
     <StyledWrapper className={className}>
