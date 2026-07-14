@@ -562,3 +562,44 @@ export async function runCommand(page: Page, command: string): Promise<void> {
   await page.waitForTimeout(400);
   await page.keyboard.press('Enter');
 }
+
+/**
+ * Expand a folder item in the sidebar by clicking its chevron if collapsed.
+ *
+ * Mirrors `expandCollection` but targets a folder row rather than a collection
+ * row: the folder chevron carries `data-testid="folder-chevron"` and gains the
+ * `rotate-90` class when the folder is expanded.
+ */
+export async function expandFolder(sidebar: Frame, folderName: string): Promise<void> {
+  const folderRow = sidebar
+    .locator('[data-testid="sidebar-collection-item-row"]')
+    .filter({ hasText: folderName })
+    .first();
+  await expect(folderRow).toBeVisible({ timeout: 10_000 });
+
+  const chevron = folderRow.locator('[data-testid="folder-chevron"]');
+  const isExpanded = await chevron.evaluate((el) => el.classList.contains('rotate-90'));
+
+  if (!isExpanded) {
+    await chevron.click();
+  }
+}
+
+/**
+ * Move a request/folder to a new directory by invoking the same IPC channel the
+ * drag-and-drop drop handler dispatches (`renderer:move-item`). Simulating the
+ * HTML5 drag-and-drop gesture directly is unreliable, so we exercise the handler
+ * through the identical `{ targetDirname, sourcePathname }` payload and let the
+ * resulting tree-update broadcast flow back into the sidebar.
+ *
+ * @param sidebar - The sidebar webview Frame
+ * @param params - Posix source path and target directory, as the webview sends them
+ */
+export async function moveItem(
+  sidebar: Frame,
+  params: { sourcePathname: string; targetDirname: string }
+): Promise<void> {
+  await sidebar.evaluate(async ({ sourcePathname, targetDirname }) => {
+    await (window as any).ipcRenderer.invoke('renderer:move-item', { targetDirname, sourcePathname });
+  }, params);
+}
