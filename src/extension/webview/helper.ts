@@ -69,7 +69,7 @@ export class WebviewHelper {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource} 'unsafe-inline' 'unsafe-eval'; img-src ${webview.cspSource} https: data: blob:; font-src ${webview.cspSource} https: data:; connect-src ${webview.cspSource} https: wss: ws:; worker-src ${webview.cspSource} blob:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline' https: http:; script-src ${webview.cspSource} 'unsafe-inline' 'unsafe-eval' https: http:; img-src ${webview.cspSource} https: http: data: blob:; media-src ${webview.cspSource} https: http: data: blob:; font-src ${webview.cspSource} https: http: data:; connect-src ${webview.cspSource} https: wss: ws:; worker-src ${webview.cspSource} blob:; frame-src 'self' https: http: data: blob:;">
   ${cssLinks}
   <title>Bruno</title>
   <style>

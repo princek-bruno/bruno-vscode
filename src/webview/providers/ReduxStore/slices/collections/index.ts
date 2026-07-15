@@ -2161,6 +2161,11 @@ export const collectionsSlice = createSlice({
           const isStreamingRequest = item.type === 'ws-request' || item.type === 'grpc-request';
           item.requestState = isStreamingRequest ? null : 'sending';
 
+          const { type, requestSent } = action.payload as { type?: string; requestSent?: Record<string, unknown> };
+          if (type === 'request-sent' && requestSent) {
+            item.requestSent = requestSent;
+          }
+
           (item as any).testResults = [];
           (item as any).assertionResults = [];
           (item as any).preRequestTestResults = [];
