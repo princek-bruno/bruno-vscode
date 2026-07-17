@@ -111,12 +111,14 @@ async function mockBrowseDirectory(frame: Frame, dirPath: string): Promise<void>
  * @param sidebar - The sidebar webview Frame
  * @param name - Collection name
  * @param location - Filesystem path where the collection will be stored
+ * @param format - On-disk format: 'yml' (OpenCollection, default) or 'bru'
  */
 export async function createCollection(
   page: Page,
   sidebar: Frame,
   name: string,
-  location: string
+  location: string,
+  format: 'yml' | 'bru' = 'yml'
 ): Promise<void> {
   // Open the "+" dropdown and click "Create collection"
   await sidebar.locator('[data-testid="collections-header-add-menu"]').click();
@@ -136,6 +138,13 @@ export async function createCollection(
 
   // Wait for formik to pick up the value before submitting
   await expect(editor.locator('#collectionLocation')).toHaveValue(location, { timeout: 5_000 });
+
+  // The format selector lives behind the "Options" toggle; only expand it when
+  // we need a non-default format.
+  if (format !== 'yml') {
+    await editor.locator('.advanced-toggle').click();
+    await editor.locator('#format').selectOption(format);
+  }
 
   // Submit the form
   await editor.locator('button[type="submit"]').filter({ hasText: 'Create Collection' }).click();
@@ -297,6 +306,28 @@ export async function expandCollection(
   );
 
   if (!isExpanded) {
+    await chevron.click();
+  }
+}
+
+/**
+ * Collapse a collection in the sidebar by clicking its chevron toggle.
+ * A collapsed collection removes its children from the DOM.
+ */
+export async function collapseCollection(
+  sidebar: Frame,
+  collectionName: string
+): Promise<void> {
+  const collectionRow = sidebar
+    .locator('[data-testid="sidebar-collection-row"]')
+    .filter({ hasText: collectionName });
+
+  const chevron = collectionRow.locator('svg.chevron-icon');
+  const isExpanded = await chevron.evaluate(
+    (el) => el.classList.contains('rotate-90')
+  );
+
+  if (isExpanded) {
     await chevron.click();
   }
 }
@@ -550,6 +581,37 @@ export async function deleteItem(
 
   // Wait for the item to disappear
   await expect(itemRow).not.toBeVisible({ timeout: 15_000 });
+}
+
+/**
+ * Copy a request/folder to the in-app clipboard via its sidebar context menu.
+ *
+ * @param sidebar - The sidebar webview Frame
+ * @param itemName - Name of the request/folder to copy
+ */
+export async function copyItem(sidebar: Frame, itemName: string): Promise<void> {
+  const itemRow = sidebar
+    .locator('[data-testid="sidebar-collection-item-row"]')
+    .filter({ hasText: itemName });
+  await itemRow.hover();
+  await itemRow.locator('[data-testid="collection-item-menu"]').click();
+  await sidebar.locator('[role="menuitem"]').filter({ hasText: /^Copy$/ }).click();
+}
+
+/**
+ * Paste the in-app clipboard item into a collection's root via its context menu.
+ * The "Paste" entry only appears once something has been copied.
+ *
+ * @param sidebar - The sidebar webview Frame
+ * @param collectionName - Name of the destination collection
+ */
+export async function pasteIntoCollection(sidebar: Frame, collectionName: string): Promise<void> {
+  const collectionRow = sidebar
+    .locator('[data-testid="sidebar-collection-row"]')
+    .filter({ hasText: collectionName });
+  await collectionRow.hover();
+  await collectionRow.locator('[data-testid="collection-actions"]').click();
+  await sidebar.locator('[role="menuitem"]').filter({ hasText: /^Paste$/ }).click();
 }
 
 /**

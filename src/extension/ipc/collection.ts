@@ -390,7 +390,7 @@ const registerCollectionIpc = (watcher: CollectionWatcherInterface): void => {
   });
 
   registerHandler('renderer:new-request', async (args) => {
-    const [pathname, request] = args as [string, { filename?: string; [key: string]: unknown }];
+    const [pathname, request] = args as [string, { filename?: string;[key: string]: unknown }];
 
     try {
       if (fs.existsSync(pathname)) {
@@ -829,11 +829,22 @@ const registerCollectionIpc = (watcher: CollectionWatcherInterface): void => {
         for (const child of (sourceItem.items || [])) {
           if (child.type === 'folder') {
             await cloneFolderRecursive(child, path.join(destPath, child.filename));
-          } else {
-            // Clone request file - copy the source file directly
-            if (child.pathname && fs.existsSync(child.pathname)) {
+          } else if (child.pathname && fs.existsSync(child.pathname)) {
+            const sourceCollectionPath = findCollectionPathByItemPath(child.pathname);
+            const sourceFormat = sourceCollectionPath ? getCollectionFormat(sourceCollectionPath) : format;
+
+            if (sourceFormat === format) {
               const destFilePath = path.join(destPath, child.filename);
               fs.copyFileSync(child.pathname, destFilePath);
+            } else {
+              /* Cross-format paste (e.g. .bru -> .yml): re-serialize so the content matches the destination
+              extension, otherwise the sidebar can't parse it. Also swap the filename extension.*/
+              const childContent = fs.readFileSync(child.pathname, 'utf8');
+              const parsedChild = await parseRequest(childContent, { format: sourceFormat });
+              const childBaseName = path.basename(child.filename, path.extname(child.filename));
+              const destFilePath = path.join(destPath, `${childBaseName}.${format}`);
+              const newChildContent = await stringifyRequest(parsedChild, { format });
+              await writeFile(destFilePath, newChildContent);
             }
           }
         }
@@ -858,19 +869,27 @@ const registerCollectionIpc = (watcher: CollectionWatcherInterface): void => {
         throw new Error(`destination: ${destPathname} already exists`);
       }
 
-      const collectionPath = findCollectionPathByItemPath(sourcePathname);
-      if (!collectionPath) {
+      const sourceCollectionPath = findCollectionPathByItemPath(sourcePathname);
+      if (!sourceCollectionPath) {
         throw new Error('Collection not found for the given pathname');
       }
 
-      const format = getCollectionFormat(collectionPath);
+      const destCollectionPath = findCollectionPathByItemPath(destPathname);
+      if (!destCollectionPath) {
+        throw new Error('Collection not found for the destination pathname');
+      }
+
+      /* Pasting across collections of different formats (e.g. .bru -> .yml) must write content that matches
+      the destination file extension, otherwise the file can't be re-parsed and the sidebar renders a broken item.*/
+      const sourceFormat = getCollectionFormat(sourceCollectionPath);
+      const destFormat = getCollectionFormat(destCollectionPath);
       const content = fs.readFileSync(sourcePathname, 'utf8');
-      const parsed = await parseRequest(content, { format });
+      const parsed = await parseRequest(content, { format: sourceFormat });
 
       parsed.name = newName;
       parsed.seq = newSeq;
 
-      const newContent = await stringifyRequest(parsed, { format });
+      const newContent = await stringifyRequest(parsed, { format: destFormat });
       await writeFile(destPathname, newContent);
 
       return { success: true };
@@ -1079,17 +1098,17 @@ const registerCollectionIpc = (watcher: CollectionWatcherInterface): void => {
       // Use existing brunoConfig from collection if available, otherwise create new
       let brunoConfig: BrunoConfig = collection.brunoConfig || (format === 'yml'
         ? {
-            opencollection: '1.0.0',
-            name: collectionName,
-            type: 'collection',
-            ignore: ['node_modules', '.git']
-          }
+          opencollection: '1.0.0',
+          name: collectionName,
+          type: 'collection',
+          ignore: ['node_modules', '.git']
+        }
         : {
-            version: '1',
-            name: collectionName,
-            type: 'collection',
-            ignore: ['node_modules', '.git']
-          });
+          version: '1',
+          name: collectionName,
+          type: 'collection',
+          ignore: ['node_modules', '.git']
+        });
 
       if (format === 'yml') {
         const content = await stringifyCollection(collection.root || { meta: { name: collectionName } }, brunoConfig, { format });
@@ -1276,7 +1295,7 @@ const registerCollectionIpc = (watcher: CollectionWatcherInterface): void => {
       );
 
       if (!valid) {
-        await fsExtra.remove(tempDir).catch(() => {});
+        await fsExtra.remove(tempDir).catch(() => { });
       }
 
       return { valid, tempZipPath: valid ? tempZipPath : '' };
@@ -1405,7 +1424,7 @@ const registerCollectionIpc = (watcher: CollectionWatcherInterface): void => {
 
         await fsExtra.move(collectionDir, finalCollectionPath);
         if (tempDir !== collectionDir) {
-          await fsExtra.remove(tempDir).catch(() => {});
+          await fsExtra.remove(tempDir).catch(() => { });
         }
 
         const uid = generateUidBasedOnHash(finalCollectionPath);
@@ -1431,7 +1450,7 @@ const registerCollectionIpc = (watcher: CollectionWatcherInterface): void => {
 
         return finalCollectionPath;
       } catch (error) {
-        await fsExtra.remove(tempDir).catch(() => {});
+        await fsExtra.remove(tempDir).catch(() => { });
         throw error;
       }
     } catch (error) {
@@ -2058,7 +2077,7 @@ get {
 
     const basename = path.basename(pathname);
     if (basename === 'folder.bru' || basename === 'folder.yml' ||
-        basename === 'collection.bru' || basename === 'opencollection.yml') {
+      basename === 'collection.bru' || basename === 'opencollection.yml') {
       return;
     }
     if (path.basename(path.dirname(pathname)) === 'environments') {
