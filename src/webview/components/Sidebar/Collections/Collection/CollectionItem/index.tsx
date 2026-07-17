@@ -47,6 +47,7 @@ import { getRevealInFolderLabel } from 'utils/common/platform';
 import ActionIcon from 'ui/ActionIcon';
 import MenuDropdown from 'ui/MenuDropdown';
 import { useSidebarAccordion } from 'components/Sidebar/SidebarAccordionContext';
+import useSearchCollapse from 'hooks/useSearchCollapse';
 import { isSidebarMode, openRequestInVSCodeEditor } from 'utils/webviewMode';
 import { ipcRenderer } from 'utils/ipc';
 
@@ -86,9 +87,13 @@ const CollectionItem = ({ item, collectionUid, collectionPathname, searchText }:
   const [isKeyboardFocused, setIsKeyboardFocused] = useState(false);
   const [dropType, setDropType] = useState<string | null>(null);
 
-  const hasSearchText = searchText && searchText?.trim?.()?.length;
-  const itemIsCollapsed = hasSearchText ? false : item.collapsed;
+  const hasSearchText = !!(searchText && searchText?.trim?.()?.length);
   const isFolder = isItemAFolder(item);
+  const { collapsed: itemIsCollapsed, toggleCollapsed } = useSearchCollapse(
+    hasSearchText,
+    item.collapsed,
+    () => dispatch(toggleCollectionItem({ itemUid: item.uid, collectionUid }))
+  );
 
   const [{ isDragging }, drag, dragPreview] = useDrag({
     type: 'collection-item',
@@ -264,12 +269,7 @@ const CollectionItem = ({ item, collectionUid, collectionPathname, searchText }:
   const handleFolderCollapse = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    dispatch(
-      toggleCollectionItem({
-        itemUid: item.uid,
-        collectionUid: collectionUid
-      })
-    );
+    toggleCollapsed();
   };
 
   const handleFolderDoubleClick = (e: React.MouseEvent) => {

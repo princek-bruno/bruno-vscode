@@ -49,6 +49,7 @@ import { getRevealInFolderLabel } from 'utils/common/platform';
 import ActionIcon from 'ui/ActionIcon';
 import MenuDropdown from 'ui/MenuDropdown';
 import { useSidebarAccordion } from 'components/Sidebar/SidebarAccordionContext';
+import useSearchCollapse from 'hooks/useSearchCollapse';
 import { ipcRenderer } from 'utils/ipc';
 import { addTransientRequest } from 'providers/ReduxStore/slices/collections';
 import transientManager from 'utils/transient-manager';
@@ -77,8 +78,12 @@ const Collection = ({ collection, searchText }: CollectionProps) => {
     });
   };
 
-  const hasSearchText = searchText && searchText?.trim?.()?.length;
-  const collectionIsCollapsed = hasSearchText ? false : collection.collapsed;
+  const hasSearchText = !!(searchText && searchText?.trim?.()?.length);
+  const { collapsed: collectionIsCollapsed, toggleCollapsed } = useSearchCollapse(
+    hasSearchText,
+    collection.collapsed,
+    () => dispatch(toggleCollection(collection.uid))
+  );
 
   const iconClassName = classnames({
     'rotate-90': !collectionIsCollapsed
@@ -110,7 +115,7 @@ const Collection = ({ collection, searchText }: CollectionProps) => {
   const handleCollectionCollapse = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    dispatch(toggleCollection(collection.uid));
+    toggleCollapsed();
   };
 
   const handleCollectionDoubleClick = (e: React.MouseEvent) => {
