@@ -60,5 +60,9 @@ test.describe('Collection overview', () => {
     // nested in a folder).
     const requestsInfo = buildCommonLocators(settings).collectionSettings.requestsInfo();
     await expect(requestsInfo).toHaveText('3 requests in collection', { timeout: 5_000 });
+
+    // Lazily-scanned requests are metadata-only (partial) until opened and must not be reported as "not loaded".
+    const requestsNotLoaded = buildCommonLocators(settings).collectionSettings.requestsNotLoaded();
+    await expect(requestsNotLoaded).toHaveCount(0);
   });
 });

@@ -16,6 +16,7 @@ export const buildCommonLocators = (frame: FrameLike) => ({
   collectionSettings: {
     container: () => frame.getByTestId('collection-settings'),
     // Overview → Requests line, e.g. "2 requests in collection".
-    requestsInfo: () => frame.getByTestId('collection-requests-count')
+    requestsInfo: () => frame.getByTestId('collection-requests-count'),
+    requestsNotLoaded: () => frame.getByTestId('collection-requests-not-loaded')
   }
 });
