@@ -1633,7 +1633,8 @@ export const collectionsSlice = createSlice({
         currentSubItems = childItem.items;
       }
 
-      if (meta.name !== 'folder.bru' && !currentSubItems.find((f) => f.name === data?.name && !f.isTransient)) {
+      /** Dedup by uid (a hash of the pathname), not display name: a disk rename keeps meta.name, so a name check would drop the renamed file as a duplicate of the not-yet-removed old item. */
+      if (meta.name !== 'folder.bru') {
         const currentItem = find(currentSubItems, (i) => i.uid === data?.uid);
         if (currentItem) {
           // Preserve existing draft and response if they exist (don't overwrite unsaved changes)
@@ -1762,7 +1763,7 @@ export const collectionsSlice = createSlice({
           currentSubItems = childItem.items;
         }
 
-        if (meta.name !== 'folder.bru' && !currentSubItems.find((f) => f.name === data?.name && !f.isTransient)) {
+        if (meta.name !== 'folder.bru') {
           const currentItem = find(currentSubItems, (i) => i.uid === data?.uid);
           if (currentItem) {
             const existingDraft = currentItem.draft;
