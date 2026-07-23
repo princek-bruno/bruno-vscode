@@ -2241,19 +2241,21 @@ export const mergeAndPersistEnvironment
         const state = getState();
         const collection = findCollectionByUid(state.collections.collections, collectionUid);
 
+        // Best-effort persistence of script-set env vars: with no active environment there's nowhere
+        // to write, so resolve quietly instead of surfacing an unhandled rejection.
         if (!collection) {
-          return reject(new Error('Collection not found'));
+          return resolve();
         }
 
         const environmentUid = collection.activeEnvironmentUid;
         if (!environmentUid) {
-          return reject(new Error('No active environment found'));
+          return resolve();
         }
 
         const collectionCopy = safeCloneCollection(collection);
         const environment = findEnvironmentInCollection(collectionCopy, environmentUid);
         if (!environment) {
-          return reject(new Error('Environment not found'));
+          return resolve();
         }
 
         // Only proceed if there are persistent variables to save

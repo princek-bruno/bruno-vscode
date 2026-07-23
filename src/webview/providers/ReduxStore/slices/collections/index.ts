@@ -1993,9 +1993,10 @@ export const collectionsSlice = createSlice({
         collection.runtimeVariables = runtimeVariables;
       }
 
-      /** Apply script-set env vars to the active environment for in-session use; disk persistence is
-       *  handled by mergeAndPersistEnvironment. Merge-only — deletions aren't reflected here to match
-       *  the merge-only persist path. */
+      /** Apply script-set env vars to the active environment for in-session use (visible in the UI,
+       *  readable via getEnvVar); mergeAndPersistEnvironment writes the same result to disk.
+       *  `envVariables` is the full enabled set after the script ran, so a var absent from it was
+       *  deleted (bru.deleteEnvVar) and is dropped; disabled vars are preserved. */
       if (envVariables && collection.activeEnvironmentUid) {
         const environment = findEnvironmentInCollection(collection, collection.activeEnvironmentUid);
         if (environment && Array.isArray(environment.variables)) {
@@ -2017,6 +2018,9 @@ export const collectionsSlice = createSlice({
               });
             }
           });
+          environment.variables = environment.variables.filter(
+            (v) => !v.enabled || Object.prototype.hasOwnProperty.call(envVariables, v.name)
+          );
         }
       }
     },
