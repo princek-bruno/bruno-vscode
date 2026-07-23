@@ -1993,11 +1993,9 @@ export const collectionsSlice = createSlice({
         collection.runtimeVariables = runtimeVariables;
       }
 
-      // Apply env vars written by scripts (bru.setEnvVar) to the active environment so they take
-      // effect within the session (visible in the UI and readable via getEnvVar). Disk persistence
-      // is handled separately by mergeAndPersistEnvironment. This merges values only — deletions are
-      // intentionally not reflected here, to stay consistent with the merge-only persist path (a
-      // reducer-only delete would reappear on reload from disk).
+      /** Apply script-set env vars to the active environment for in-session use; disk persistence is
+       *  handled by mergeAndPersistEnvironment. Merge-only — deletions aren't reflected here to match
+       *  the merge-only persist path. */
       if (envVariables && collection.activeEnvironmentUid) {
         const environment = findEnvironmentInCollection(collection, collection.activeEnvironmentUid);
         if (environment && Array.isArray(environment.variables)) {
