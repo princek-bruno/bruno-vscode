@@ -62,7 +62,7 @@ const createConsoleLogHandler = (collectionUid: string, requestUid: string) => {
 // Broadcast the variable changes a script produced. `main:script-environment-update` applies env +
 // runtime vars to the webview state (so they take effect in-session); `main:persistent-env-variables-update`
 // drives the disk write for variables the script marked persistent; global env vars persist via their
-// own channel. The persistent channel had no emitter before, so script-persisted env vars were dropped.
+// own channel.
 const emitScriptVariableUpdates = (
   result: { envVariables?: unknown; runtimeVariables?: unknown; persistentEnvVariables?: Record<string, unknown>; globalEnvironmentVariables?: unknown },
   context: ScriptContext
