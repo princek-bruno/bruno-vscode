@@ -39,8 +39,12 @@ const getJsSandboxRuntime = (collection: Record<string, unknown>): string => {
     return 'nodevm';
   }
 
-  // default runtime is `quickjs`
-  return 'quickjs';
+  // The QuickJS (safe) sandbox cannot be esbuild-bundled into the extension: its wasm variant is an
+  // ESM module that resolves via `import.meta.url`, which is undefined in the CJS bundle, so the
+  // sandbox fails to initialize and every user script silently throws. Node's `vm` sandbox bundles
+  // cleanly (see `patchNodeVmPlugin` in esbuild.extension.mjs), so it is used until QuickJS can be
+  // bundled. Without this, scripting APIs (bru.setVar/setEnvVar/...) never run in the extension.
+  return 'nodevm';
 };
 
 const promisifyStream = async (stream: Readable): Promise<Buffer> => {

@@ -38,6 +38,17 @@ app.get('/headers', (req, res) => {
   res.json(req.headers);
 });
 
+// Capture a header so e2e tests can assert (from Node) exactly what the extension SENT — used to
+// verify pre-request scripts ran and variables interpolated, without relying on the response UI.
+let lastCapturedToken: string | undefined;
+app.get('/capture', (req, res) => {
+  lastCapturedToken = req.headers['x-token'] as string | undefined;
+  res.json({ ok: true });
+});
+app.get('/last-capture', (_req, res) => {
+  res.json({ token: lastCapturedToken ?? null });
+});
+
 app.post('/api/echo/json', (req, res) => {
   res.json(req.body);
 });

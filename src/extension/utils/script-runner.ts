@@ -59,6 +59,35 @@ const createConsoleLogHandler = (collectionUid: string, requestUid: string) => {
   };
 };
 
+// Broadcast the variable changes a script produced. `main:script-environment-update` applies env +
+// runtime vars to the webview state (so they take effect in-session); `main:persistent-env-variables-update`
+// drives the disk write for variables the script marked persistent; global env vars persist via their
+// own channel. The persistent channel had no emitter before, so script-persisted env vars were dropped.
+const emitScriptVariableUpdates = (
+  result: { envVariables?: unknown; runtimeVariables?: unknown; persistentEnvVariables?: Record<string, unknown>; globalEnvironmentVariables?: unknown },
+  context: ScriptContext
+): void => {
+  sendToWebview('main:script-environment-update', {
+    envVariables: result.envVariables,
+    runtimeVariables: result.runtimeVariables,
+    requestUid: context.requestUid,
+    collectionUid: context.collectionUid
+  });
+
+  if (result.persistentEnvVariables && Object.keys(result.persistentEnvVariables).length > 0) {
+    sendToWebview('main:persistent-env-variables-update', {
+      persistentEnvVariables: result.persistentEnvVariables,
+      collectionUid: context.collectionUid
+    });
+  }
+
+  if (result.globalEnvironmentVariables) {
+    sendToWebview('main:global-environment-variables-update', {
+      globalEnvironmentVariables: result.globalEnvironmentVariables
+    });
+  }
+};
+
 export const runPreRequestScript = async (
   request: unknown,
   context: ScriptContext
@@ -91,19 +120,7 @@ export const runPreRequestScript = async (
       context.collectionName
     );
 
-    sendToWebview('main:script-environment-update', {
-      envVariables: result.envVariables,
-      runtimeVariables: result.runtimeVariables,
-      persistentEnvVariables: result.persistentEnvVariables,
-      requestUid: context.requestUid,
-      collectionUid: context.collectionUid
-    });
-
-    if (result.globalEnvironmentVariables) {
-      sendToWebview('main:global-environment-variables-update', {
-        globalEnvironmentVariables: result.globalEnvironmentVariables
-      });
-    }
+    emitScriptVariableUpdates(result, context);
 
     const preReqTestResults = (result as any).results;
     if (preReqTestResults && preReqTestResults.length > 0) {
@@ -160,19 +177,7 @@ export const runPostResponseVars = (
     );
 
     if (result) {
-      sendToWebview('main:script-environment-update', {
-        envVariables: result.envVariables,
-        runtimeVariables: result.runtimeVariables,
-        persistentEnvVariables: result.persistentEnvVariables,
-        requestUid: context.requestUid,
-        collectionUid: context.collectionUid
-      });
-
-      if (result.globalEnvironmentVariables) {
-        sendToWebview('main:global-environment-variables-update', {
-          globalEnvironmentVariables: result.globalEnvironmentVariables
-        });
-      }
+      emitScriptVariableUpdates(result, context);
 
       if (result.error) {
         sendToWebview('main:display-error', { error: result.error });
@@ -221,19 +226,7 @@ export const runPostResponseScript = async (
       context.collectionName
     );
 
-    sendToWebview('main:script-environment-update', {
-      envVariables: result.envVariables,
-      runtimeVariables: result.runtimeVariables,
-      persistentEnvVariables: result.persistentEnvVariables,
-      requestUid: context.requestUid,
-      collectionUid: context.collectionUid
-    });
-
-    if (result.globalEnvironmentVariables) {
-      sendToWebview('main:global-environment-variables-update', {
-        globalEnvironmentVariables: result.globalEnvironmentVariables
-      });
-    }
+    emitScriptVariableUpdates(result, context);
 
     const postResTestResults = (result as any).results;
     if (postResTestResults && postResTestResults.length > 0) {
