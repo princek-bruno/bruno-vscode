@@ -1144,6 +1144,9 @@ const registerNetworkIpc = (): void => {
         size: result.size,
         duration: result.duration,
         timeline: result.timeline,
+        // Interpolated URL actually sent (executeRequest resolves {{vars}} in place). Used as the
+        // <base href> for HTML previews so relative assets resolve; requestSent.url is still raw.
+        requestUrl: scriptRequest.url,
         error: result.error
       };
     } catch (error) {

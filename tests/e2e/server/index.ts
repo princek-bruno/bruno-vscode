@@ -49,6 +49,12 @@ app.get('/last-capture', (_req, res) => {
   res.json({ token: lastCapturedToken ?? null });
 });
 
+// Minimal HTML page (with a relative asset) to exercise the HTML response preview's <base href>.
+app.get('/htmlpage', (_req, res) => {
+  res.setHeader('Content-Type', 'text/html');
+  res.send('<html><head><title>t</title></head><body><img src="logo.png"/>hello</body></html>');
+});
+
 app.post('/api/echo/json', (req, res) => {
   res.json(req.body);
 });

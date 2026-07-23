@@ -55,7 +55,9 @@ export const sendNetworkRequest = async (item: any, collection: any, environment
             statusText: response.statusText,
             duration: response.duration,
             timeline: response.timeline,
-            stream: response.stream
+            stream: response.stream,
+            // Interpolated URL that was sent, used as the HTML-preview <base href>
+            requestUrl: (response as { requestUrl?: string }).requestUrl
           });
         })
         .catch((err) => reject(err));
