@@ -21,6 +21,7 @@ const { dotenvToJson } = require('@usebruno/lang');
 import { uuid } from '../utils/common';
 import { getRequestUid } from '../cache/requestUids';
 import { decryptStringSafe } from '../utils/encryption';
+import { parseValueByDataType, BrunoVariableDataType } from '@usebruno/common/utils';
 import { setDotEnvVars, getProcessEnvVars } from '../store/process-env';
 import { setBrunoConfig } from '../store/bruno-config';
 import EnvironmentSecretsStore from '../store/env-secrets';
@@ -104,9 +105,10 @@ const isCollectionRootFile = (pathname: string, collectionPath: string): boolean
 
 interface EnvironmentVariable {
   name: string;
-  value: string;
+  value: string | number | boolean | Record<string, unknown> | null;
   secret?: boolean;
   uid?: string;
+  dataType?: BrunoVariableDataType;
 }
 
 interface Environment {
@@ -219,7 +221,8 @@ const addEnvironmentFile = async (
         const variable = _.find(parsedEnv.variables, (v: EnvironmentVariable) => v.name === secret.name);
         if (variable && secret.value) {
           const decryptionResult = decryptStringSafe(secret.value);
-          variable.value = decryptionResult.value;
+          // Coerce back to the recorded data type so typed secrets round-trip like non-secret vars.
+          variable.value = parseValueByDataType(decryptionResult.value, variable.dataType);
         }
       });
     }
@@ -506,7 +509,8 @@ class CollectionWatcher {
           const variable = _.find(parsedEnv.variables, (v: EnvironmentVariable) => v.name === secret.name);
           if (variable && secret.value) {
             const decryptionResult = decryptStringSafe(secret.value);
-            variable.value = decryptionResult.value;
+            // Coerce back to the recorded data type so typed secrets round-trip like non-secret vars.
+            variable.value = parseValueByDataType(decryptionResult.value, variable.dataType);
           }
         });
       }

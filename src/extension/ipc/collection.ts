@@ -6,6 +6,7 @@ import * as vscode from 'vscode';
 import * as fsExtra from 'fs-extra';
 import AdmZip from 'adm-zip';
 import extractZip from 'extract-zip';
+import type { BrunoVariableDataType } from '@usebruno/common/utils';
 import { registerHandler, registerEventListener, sendToWebview, broadcastToAllWebviews, emit, getCurrentWebview } from './handlers';
 import { stateManager } from '../webview/state-manager';
 import {
@@ -86,7 +87,7 @@ export function setSidebarWebviewGetter(getter: () => vscode.Webview | undefined
 
 interface Environment {
   name: string;
-  variables: Array<{ name: string; value: string; secret?: boolean; uid?: string }>;
+  variables: Array<{ name: string; value: string | number | boolean | Record<string, unknown> | null; secret?: boolean; uid?: string; dataType?: BrunoVariableDataType }>;
 }
 
 interface BrunoConfig {

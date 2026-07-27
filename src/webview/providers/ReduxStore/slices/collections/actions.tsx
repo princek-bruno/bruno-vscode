@@ -1,6 +1,6 @@
 import React from 'react';
 import { collectionSchema, environmentSchema, itemSchema } from '@usebruno/schema';
-import { parseQueryParams, extractPromptVariables } from '@usebruno/common/utils';
+import { parseQueryParams, extractPromptVariables, getDataTypeFromValue } from '@usebruno/common/utils';
 import { REQUEST_TYPES } from 'utils/common/constants';
 import cloneDeep from 'lodash/cloneDeep';
 import filter from 'lodash/filter';
@@ -177,7 +177,8 @@ import {
   updateFolderVar,
   addCollectionVar,
   updateCollectionVar,
-  updatePathParam
+  updatePathParam,
+  scriptUpdateCollectionVars
 } from './index';
 
 import { each } from 'lodash';
@@ -199,7 +200,7 @@ import {
   mergeHeaders
 } from 'utils/collections/index';
 import { sanitizeName } from 'utils/common/regex';
-import { buildPersistedEnvVariables } from 'utils/environments';
+import { buildPersistedEnvVariables, applyScriptVars, getScriptModifiedKeys } from 'utils/environments';
 import { safeParseJSON, safeStringifyJSON } from 'utils/common/index';
 import { resolveInheritedAuth } from 'utils/auth';
 import { addTab } from 'providers/ReduxStore/slices/tabs';
@@ -2295,19 +2296,31 @@ export const mergeAndPersistEnvironment
 
         let existingVars = environment.variables || [];
 
+        // Script values are native (number/boolean/object); record the data type so serialization
+        // emits the matching `@type` annotation. 'string' is the implicit default — leave it off.
+        const withDataType = (value: unknown) => {
+          const dataType = getDataTypeFromValue(value);
+          return dataType === 'string' ? {} : { dataType };
+        };
+
+        // Environment vars are merge-only (set/update), unlike the collection and global scopes which
+        // drop vars a script deleted: deleteEnvVar is not among the persisting scripting APIs, so a
+        // script never removes an environment variable from disk.
         let normalizedNewVars = Object.entries(persistentEnvVariables).map(([name, value]) => ({
           uid: uuid(),
           name,
           value,
           type: 'text',
           enabled: true,
-          secret: false
+          secret: false,
+          ...withDataType(value)
         }));
 
         const merged = existingVars.map((v: any) => {
           const found = normalizedNewVars.find((nv) => nv.name === v.name);
           if (found) {
-            return { ...v, value: found.value };
+            const { dataType, ...rest } = v;
+            return { ...rest, value: found.value, ...withDataType(found.value) };
           }
           return v;
         });
@@ -2335,6 +2348,75 @@ export const mergeAndPersistEnvironment
           .then(resolve)
           .catch(reject);
       });
+    };
+
+// Persist collection variables written by scripts (bru.setCollectionVar / deleteCollectionVar) to
+// the collection root's pre-request vars, where collection-scoped variables live on disk. The script
+// map is the full enabled set after the script ran, so an absent enabled var was deleted and is
+// dropped.
+//
+// The script sees the *draft* collection vars (mergeVars reads the draft), so the baseline snapshots
+// those draft values: getScriptModifiedKeys then flags only what the script actually changed, and the
+// delta is applied onto the *saved* vars. This is what prevents a request run from silently flushing
+// unsaved draft edits to disk — the open draft is left untouched and only script-written values reach
+// the saved file. Values are native, so the data type is recorded for annotated serialization.
+export const collectionVariablesUpdateEvent
+  = ({ collectionVariables, collectionUid }: any) =>
+    (dispatch: any, getState: any) => {
+      if (!collectionVariables || !collectionUid) {
+        return Promise.resolve();
+      }
+
+      const state = getState();
+      const collection = findCollectionByUid(state.collections.collections, collectionUid);
+      if (!collection) {
+        return Promise.resolve();
+      }
+
+      const savedVars = (get(collection, 'root.request.vars.req', []) as any[]) || [];
+      const draftVars = collection.draft?.root
+        ? (get(collection, 'draft.root.request.vars.req', null) as any[] | null)
+        : null;
+
+      // Recompute the baseline from the live draft on every run: the script starts from the current
+      // draft values (mergeVars reads the draft), so a var whose script-map value still equals the
+      // draft wasn't touched by the script and must not be flushed to the saved file. A once-captured
+      // baseline would misread later draft edits as script changes. No draft => direct apply vs saved.
+      let baseline: Record<string, unknown> | null = null;
+      if (draftVars) {
+        baseline = {};
+        draftVars.forEach((v: any) => {
+          if (v.enabled) baseline![v.name] = v.value;
+        });
+      }
+
+      let vars = cloneDeep(savedVars);
+      vars = applyScriptVars(vars, collectionVariables, baseline);
+
+      const modifiedKeys = getScriptModifiedKeys(collectionVariables, baseline);
+      modifiedKeys.forEach((name) => {
+        // Target the enabled slot applyScriptVars wrote to, not a same-named disabled var.
+        const existing = vars.find((v: any) => v.name === name && v.enabled);
+        if (!existing) return;
+        const inferred = getDataTypeFromValue(collectionVariables[name]);
+        if (inferred === 'string') {
+          delete existing.dataType;
+        } else {
+          existing.dataType = inferred;
+        }
+      });
+
+      dispatch(scriptUpdateCollectionVars({ collectionUid, vars }));
+
+      const fresh = findCollectionByUid(getState().collections.collections, collectionUid);
+      if (!fresh) {
+        return Promise.resolve();
+      }
+      const collectionRootToSave = transformCollectionRootToSave({ root: fresh.root });
+      const { ipcRenderer } = window;
+      return ipcRenderer
+        .invoke('renderer:save-collection-root', fresh.pathname, collectionRootToSave, fresh.brunoConfig)
+        .catch((err: Error) => console.error('Failed to persist collection variables:', err));
     };
 
 export const selectEnvironment = (environmentUid: any, collectionUid: any) => (dispatch: any, getState: any) => {

@@ -19,7 +19,7 @@ import {
 import { getSubdirectoriesFromRoot } from 'utils/common/platform';
 import { uuid, generateUidBasedOnHash } from 'utils/common';
 import { splitOnFirst, parsePathParams } from 'utils/url';
-import { parseQueryParams } from '@usebruno/common/utils';
+import { parseQueryParams, getDataTypeFromValue } from '@usebruno/common/utils';
 // @ts-expect-error - @usebruno/common/utils may not export buildQueryString in types
 import { buildQueryString as stringifyQueryParams } from '@usebruno/common/utils';
 import type { AppCollection, AppItem, UID, KeyValue, DraftRequestBody, HttpRequestParam, ResponseState, AuthMode, OAuth2CredentialEntry } from '@bruno-types';
@@ -427,6 +427,25 @@ export const collectionsSlice = createSlice({
       if (collection) {
         collection.environmentsDraft = null;
       }
+    },
+
+    scriptUpdateCollectionVars: (state, action: PayloadAction<{ collectionUid: UID; vars: unknown[] }>) => {
+      const { collectionUid, vars } = action.payload;
+      const collection = findCollectionByUid(state.collections, collectionUid);
+      if (!collection) {
+        return;
+      }
+      // Only the saved root is updated (never the open draft), so a script write persists alongside
+      // the saved file without flushing unsaved draft edits. Preserve per-var metadata
+      // (description/secret/etc.) via `...rest`; 'string' dataType is the implicit default and dropped.
+      const mappedVars = map(vars as any[], ({ uid, name = '', value = '', enabled = true, dataType, ...rest }: any) => {
+        const out: any = { ...rest, uid: uid || uuid(), name, value, enabled };
+        if (dataType && dataType !== 'string') {
+          out.dataType = dataType;
+        }
+        return out;
+      });
+      set(collection, 'root.request.vars.req', mappedVars);
     },
 
     newItem: (state, action: PayloadAction<NewItemPayload>) => {
@@ -1035,18 +1054,20 @@ export const collectionsSlice = createSlice({
           const draft = ensureDraft(item);
           if (draft.request) {
             draft.request.vars = {
-              req: map(vars.req || [], ({ uid, name = '', value = '', enabled = true }: any) => ({
-                uid: uid || uuid(),
-                name,
-                value,
-                enabled
-              })),
-              res: map(vars.res || [], ({ uid, name = '', value = '', enabled = true, local = false }: any) => ({
+              req: map(vars.req || [], ({ uid, name = '', value = '', enabled = true, dataType }: any) => ({
                 uid: uid || uuid(),
                 name,
                 value,
                 enabled,
-                local
+                dataType
+              })),
+              res: map(vars.res || [], ({ uid, name = '', value = '', enabled = true, local = false, dataType }: any) => ({
+                uid: uid || uuid(),
+                name,
+                value,
+                enabled,
+                local,
+                dataType
               }))
             } as typeof draft.request.vars;
           }
@@ -1997,7 +2018,8 @@ export const collectionsSlice = createSlice({
       /** Apply script-set env vars to the active environment for in-session use (visible in the UI,
        *  readable via getEnvVar); mergeAndPersistEnvironment writes the same result to disk.
        *  `envVariables` is the full enabled set after the script ran, so a var absent from it was
-       *  deleted (bru.deleteEnvVar) and is dropped; disabled vars are preserved. */
+       *  deleted (bru.deleteEnvVar) and is dropped; disabled vars are preserved. Non-string values
+       *  carry a dataType so the on-disk `@number`/`@boolean`/`@object` annotation round-trips. */
       if (envVariables && collection.activeEnvironmentUid) {
         const environment = findEnvironmentInCollection(collection, collection.activeEnvironmentUid);
         if (environment && Array.isArray(environment.variables)) {
@@ -2005,9 +2027,15 @@ export const collectionsSlice = createSlice({
             if (name === '__name__') {
               return;
             }
+            const dataType = getDataTypeFromValue(value);
             const existing = environment.variables.find((v) => v.name === name && v.enabled);
             if (existing) {
               existing.value = value as typeof existing.value;
+              if (dataType === 'string') {
+                delete existing.dataType;
+              } else {
+                existing.dataType = dataType;
+              }
             } else {
               environment.variables.push({
                 uid: uuid(),
@@ -2015,7 +2043,8 @@ export const collectionsSlice = createSlice({
                 value: value as never,
                 type: 'text',
                 enabled: true,
-                secret: false
+                secret: false,
+                ...(dataType !== 'string' ? { dataType } : {})
               });
             }
           });
@@ -2742,11 +2771,12 @@ export const collectionsSlice = createSlice({
       if (!folder.draft) {
         folder.draft = { root: cloneDeep(folder.root) };
       }
-      const mappedVars = map(vars, ({ uid, name = '', value = '', enabled = true, local = false }) => ({
+      const mappedVars = map(vars, ({ uid, name = '', value = '', enabled = true, local = false, dataType }) => ({
         uid: uid || uuid(),
         name,
         value,
         enabled,
+        dataType,
         ...(type === 'response' ? { local } : {})
       }));
       if (type === 'request') {
@@ -2767,11 +2797,12 @@ export const collectionsSlice = createSlice({
           root: cloneDeep(collection.root)
         };
       }
-      const mappedVars = map(vars, ({ uid, name = '', value = '', enabled = true, local = false }) => ({
+      const mappedVars = map(vars, ({ uid, name = '', value = '', enabled = true, local = false, dataType }) => ({
         uid: uid || uuid(),
         name,
         value,
         enabled,
+        dataType,
         ...(type === 'response' ? { local } : {})
       }));
       if (type === 'request') {
@@ -3074,6 +3105,7 @@ export const {
   selectEnvironment,
   setEnvironmentsDraft,
   clearEnvironmentsDraft,
+  scriptUpdateCollectionVars,
   newItem,
   deleteItem,
   renameItem,

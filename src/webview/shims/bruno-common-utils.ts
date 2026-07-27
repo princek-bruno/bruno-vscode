@@ -7,6 +7,20 @@
  * a circular import if we tried to re-export from the npm package.
  */
 
+export type BrunoVariableDataType = 'string' | 'number' | 'boolean' | 'object';
+
+/**
+ * Derive the Bru lang data type of a native value. Mirrors @usebruno/common's implementation;
+ * reimplemented here because the rsbuild alias redirects @usebruno/common/utils to this shim.
+ */
+export const getDataTypeFromValue = (value: unknown): BrunoVariableDataType => {
+  if (value === null || value === undefined) return 'string';
+  if (typeof value === 'number') return 'number';
+  if (typeof value === 'boolean') return 'boolean';
+  if (typeof value === 'object') return 'object';
+  return 'string';
+};
+
 interface QueryParam {
   name: string;
   value?: string;

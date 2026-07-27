@@ -31,10 +31,10 @@ interface ScriptRunResult {
   success: boolean;
   skipRequest?: boolean;
   nextRequestName?: string;
-  envVariables?: Record<string, unknown>;
-  runtimeVariables?: Record<string, unknown>;
-  persistentEnvVariables?: Record<string, unknown>;
-  globalEnvironmentVariables?: Record<string, unknown>;
+  envVariables?: Record<string, unknown> | null;
+  runtimeVariables?: Record<string, unknown> | null;
+  collectionVariables?: Record<string, unknown> | null;
+  globalEnvironmentVariables?: Record<string, unknown> | null;
   error?: string;
 }
 
@@ -65,7 +65,12 @@ const createConsoleLogHandler = (collectionUid: string, requestUid: string) => {
  *  actually changed one), and global env vars. `envVarsBefore` is the pre-script snapshot used to
  *  skip needless environment-file writes. */
 const emitScriptVariableUpdates = (
-  result: { envVariables?: Record<string, unknown>; runtimeVariables?: unknown; globalEnvironmentVariables?: unknown },
+  result: {
+    envVariables?: Record<string, unknown>;
+    runtimeVariables?: unknown;
+    collectionVariables?: unknown;
+    globalEnvironmentVariables?: unknown;
+  },
   context: ScriptContext,
   envVarsBefore?: Record<string, unknown>
 ): void => {
@@ -79,6 +84,13 @@ const emitScriptVariableUpdates = (
   if (result.envVariables && !isEqual(result.envVariables, envVarsBefore)) {
     sendToWebview('main:persistent-env-variables-update', {
       persistentEnvVariables: result.envVariables,
+      collectionUid: context.collectionUid
+    });
+  }
+
+  if (result.collectionVariables) {
+    sendToWebview('main:collection-variables-update', {
+      collectionVariables: result.collectionVariables,
       collectionUid: context.collectionUid
     });
   }
@@ -142,7 +154,7 @@ export const runPreRequestScript = async (
       nextRequestName: result.nextRequestName,
       envVariables: result.envVariables,
       runtimeVariables: result.runtimeVariables,
-      persistentEnvVariables: result.persistentEnvVariables,
+      collectionVariables: result.collectionVariables,
       globalEnvironmentVariables: result.globalEnvironmentVariables
     };
   } catch (error) {
@@ -249,7 +261,7 @@ export const runPostResponseScript = async (
       nextRequestName: result.nextRequestName,
       envVariables: result.envVariables,
       runtimeVariables: result.runtimeVariables,
-      persistentEnvVariables: result.persistentEnvVariables,
+      collectionVariables: result.collectionVariables,
       globalEnvironmentVariables: result.globalEnvironmentVariables
     };
   } catch (error) {
