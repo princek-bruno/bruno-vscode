@@ -79,11 +79,17 @@ describe('renaming a request file on disk', () => {
     };
 
     let state = makeState([item]);
+
+    // Re-add the same path/uid with a new name — an in-place update must replace
+    // the existing item rather than append a duplicate.
     state = collectionsReducer(state, collectionAddFileEvent(
-      addFilePayload('/test/req.bru', 'uid-1', 'My Request')
+      addFilePayload('/test/req.bru', 'uid-1', 'My Request (edited)')
     ));
 
     const requests = state.collections[0].items.filter((i: any) => i.type === 'http-request');
     expect(requests).toHaveLength(1);
+    expect(requests[0].uid).toBe('uid-1');
+    expect(requests[0].name).toBe('My Request (edited)');
+    expect(requests[0].pathname).toBe('/test/req.bru');
   });
 });
