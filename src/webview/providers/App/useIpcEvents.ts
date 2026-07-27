@@ -29,6 +29,7 @@ import {
   openCollectionEvent,
   hydrateCollectionWithUiStateSnapshot,
   mergeAndPersistEnvironment,
+  collectionVariablesUpdateEvent,
   hydrateCollectionSecurityConfig
 } from 'providers/ReduxStore/slices/collections/actions';
 import { workspaceOpenedEvent, workspaceConfigUpdatedEvent } from 'providers/ReduxStore/slices/workspaces/actions';
@@ -310,6 +311,10 @@ const useIpcEvents = () => {
 
     const removeGlobalEnvironmentVariablesUpdateListener = ipcRenderer.on('main:global-environment-variables-update', (val: unknown) => {
       dispatch(globalEnvironmentsUpdateEvent(val));
+    });
+
+    const removeCollectionVariablesUpdateListener = ipcRenderer.on('main:collection-variables-update', (val: unknown) => {
+      dispatch(collectionVariablesUpdateEvent(val));
     });
 
     const removeCollectionRenamedListener = ipcRenderer.on('main:collection-renamed', (val: unknown) => {
@@ -670,6 +675,7 @@ const useIpcEvents = () => {
       removeHttpStreamEndListener();
       removeCollectionLoadingStateListener();
       removePersistentEnvVariablesUpdateListener();
+      removeCollectionVariablesUpdateListener();
       removeOpenRequestTabListener();
       removeOpenCollectionTabListener();
       removeOpenFolderTabListener();

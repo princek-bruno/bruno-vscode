@@ -1,7 +1,7 @@
 /**
  * Payload types for collection slice reducers
  */
-import type { UID, KeyValue, AuthMode } from '@bruno-types';
+import type { UID, KeyValue, AuthMode, BrunoVariableDataType } from '@bruno-types';
 import type { AppCollection, AppItem, SecurityConfig } from '@bruno-types';
 
 export interface CollectionUidPayload {
@@ -652,6 +652,7 @@ export interface SetFolderVarsPayload extends FolderUidPayload {
     value?: string;
     enabled?: boolean;
     local?: boolean;
+    dataType?: BrunoVariableDataType;
   }>;
   type: 'request' | 'response';
 }
@@ -663,6 +664,7 @@ export interface SetCollectionVarsPayload extends CollectionUidPayload {
     value?: string;
     enabled?: boolean;
     local?: boolean;
+    dataType?: BrunoVariableDataType;
   }>;
   type: 'request' | 'response';
 }

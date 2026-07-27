@@ -56,10 +56,10 @@ declare module '@usebruno/common' {
 
 declare module '@usebruno/js' {
   export interface ScriptResult {
-    envVariables?: Record<string, unknown>;
-    runtimeVariables?: Record<string, unknown>;
-    persistentEnvVariables?: Record<string, unknown>;
-    globalEnvironmentVariables?: Record<string, unknown>;
+    envVariables?: Record<string, unknown> | null;
+    runtimeVariables?: Record<string, unknown> | null;
+    collectionVariables?: Record<string, unknown> | null;
+    globalEnvironmentVariables?: Record<string, unknown> | null;
     nextRequestName?: string;
     skipRequest?: boolean;
     error?: string;
@@ -77,10 +77,10 @@ declare module '@usebruno/js' {
   }
 
   export interface VarsResult {
-    envVariables?: Record<string, unknown>;
-    runtimeVariables?: Record<string, unknown>;
-    persistentEnvVariables?: Record<string, unknown>;
-    globalEnvironmentVariables?: Record<string, unknown>;
+    envVariables?: Record<string, unknown> | null;
+    runtimeVariables?: Record<string, unknown> | null;
+    collectionVariables?: Record<string, unknown> | null;
+    globalEnvironmentVariables?: Record<string, unknown> | null;
     error?: string;
   }
 
