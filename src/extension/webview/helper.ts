@@ -8,7 +8,12 @@ interface ExtractedAssets {
 }
 
 export class WebviewHelper {
-  private static extractAssetsFromHtml(htmlPath: string): ExtractedAssets {
+  /**
+   * Scripts/styles in the order rsbuild emitted them into the entry HTML. That order is the
+   * chunk dependency order; injecting split chunks in any other order can run a chunk before
+   * one it depends on (e.g. a styled-components consumer before styled-components).
+   */
+  static extractAssetsFromHtml(htmlPath: string): ExtractedAssets {
     const scripts: string[] = [];
     const styles: string[] = [];
 
