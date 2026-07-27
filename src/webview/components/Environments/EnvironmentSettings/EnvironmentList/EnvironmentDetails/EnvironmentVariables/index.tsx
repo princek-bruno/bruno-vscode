@@ -1,10 +1,12 @@
 import React, { useCallback, useRef, useMemo, useEffect } from 'react';
 import cloneDeep from 'lodash/cloneDeep';
 import { get } from 'lodash';
-import { IconTrash, IconAlertCircle, IconInfoCircle } from '@tabler/icons';
+import { IconTrash, IconAlertCircle } from '@tabler/icons';
 import { useTheme } from 'providers/Theme';
 import { useDispatch, useSelector } from 'react-redux';
+import { valueToString, BRUNO_VARIABLE_DATATYPES } from '@usebruno/common/utils';
 import MultiLineEditor from 'components/MultiLineEditor/index';
+import DataTypeSelector from 'components/DataTypeSelector';
 import StyledWrapper from './StyledWrapper';
 import { uuid } from 'utils/common';
 import { useFormik } from 'formik';
@@ -137,7 +139,8 @@ const EnvironmentVariables = ({
         secret: Yup.boolean(),
         type: Yup.string(),
         uid: Yup.string(),
-        value: Yup.mixed().nullable()
+        value: Yup.mixed().nullable(),
+        dataType: Yup.string().oneOf(BRUNO_VARIABLE_DATATYPES as unknown as string[]).nullable()
       })
     ),
     validate: (values) => {
@@ -464,28 +467,27 @@ const EnvironmentVariables = ({
                       <ErrorMessage name={`${index}.name`} index={index} />
                     </div>
                   </td>
-                  <td className="flex flex-row flex-nowrap items-center">
+                  <td className="flex flex-row flex-nowrap items-center gap-2">
                     <div className="overflow-hidden grow w-full relative">
                       <MultiLineEditor
                         theme={storedTheme}
                         collection={_collection}
-                        value={variable.value}
+                        value={valueToString(variable.value, 2)}
                         placeholder={isLastEmptyRow ? 'Value' : ''}
                         isSecret={variable.secret}
-                        readOnly={typeof variable.value !== 'string'}
                         onChange={(newValue: any) => formik.setFieldValue(`${index}.value`, newValue, true)}
                         onSave={handleSave}
                       />
                     </div>
-                    {typeof variable.value !== 'string' && (
-                      <span className="ml-2 flex items-center">
-                        <IconInfoCircle id={`${variable.uid}-disabled-info-icon`} className="text-muted" size={16} />
-                        <Tooltip
-                          anchorId={`${variable.uid}-disabled-info-icon`}
-                          content="Non-string values set via scripts are read-only and can only be updated through scripts."
-                          place="top"
-                        />
-                      </span>
+                    {!isLastEmptyRow && (
+                      <DataTypeSelector
+                        variable={variable}
+                        onChange={(fields) => {
+                          Object.entries(fields).forEach(([key, val]) => {
+                            formik.setFieldValue(`${index}.${key}`, val, true);
+                          });
+                        }}
+                      />
                     )}
                     {!variable.secret && hasSensitiveUsage(variable.name) && (
                       <SensitiveFieldWarning

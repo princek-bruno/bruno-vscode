@@ -21,6 +21,60 @@ export const getDataTypeFromValue = (value: unknown): BrunoVariableDataType => {
   return 'string';
 };
 
+export const BRUNO_VARIABLE_DATATYPES: readonly BrunoVariableDataType[] = ['string', 'number', 'boolean', 'object'];
+
+/** String-form → typed JS value, or the raw value on failure. Pairs with valueToString. */
+export const parseValueByDataType = (value: any, dataType?: BrunoVariableDataType): any => {
+  if (!dataType || dataType === 'string') return value;
+  try {
+    if (dataType === 'number') {
+      if (typeof value === 'number') return value;
+      const trimmed = typeof value === 'string' ? value.trim() : value;
+      if (trimmed === '' || trimmed == null) return value;
+      const num = Number(trimmed);
+      if (!Number.isNaN(num)) return num;
+    } else if (dataType === 'boolean') {
+      if (typeof value === 'boolean') return value;
+      if (value === 'true') return true;
+      if (value === 'false') return false;
+    } else if (dataType === 'object') {
+      if (typeof value === 'object' && value !== null) return value;
+      const trimmed = typeof value === 'string' ? value.trim() : value;
+      if (trimmed === '' || trimmed == null) return value;
+      const parsed = JSON.parse(trimmed);
+      if (parsed !== null && typeof parsed === 'object') return parsed;
+    }
+  } catch (_) {
+    // not coercible — fall through to raw
+  }
+  return value;
+};
+
+/** Native value → its string form (objects as JSON). Pairs with parseValueByDataType. */
+export const valueToString = (value: unknown, indent?: number): string => {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'function' || typeof value === 'symbol') return '';
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value, null, indent) ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
+  return String(value);
+};
+
+/** Error message when a coerced value's JS type doesn't match its declared dataType, else null. */
+export const validateDataTypeValue = (value: any, dataType?: BrunoVariableDataType): string | null => {
+  if (!dataType || dataType === 'string') return null;
+  if (value === undefined || value === null) return null;
+  if (dataType === 'number' && typeof value !== 'number') return `Value is not a valid ${dataType}`;
+  if (dataType === 'boolean' && typeof value !== 'boolean') return `Value is not a valid ${dataType}`;
+  if (dataType === 'object' && typeof value !== 'object') return `Value is not a valid ${dataType}`;
+  return null;
+};
+
 interface QueryParam {
   name: string;
   value?: string;

@@ -160,10 +160,12 @@ declare module '@usebruno/common/utils' {
   export function safeParseJSON(str: string): unknown;
   export function safeStringifyJSON(obj: unknown): string;
   export type BrunoVariableDataType = 'string' | 'number' | 'boolean' | 'object';
+  export const BRUNO_VARIABLE_DATATYPES: readonly BrunoVariableDataType[];
   export function getDataTypeFromValue(value: unknown): BrunoVariableDataType;
   // Mirrors @usebruno/common: value in / value out are `any` (coerced to the given data type).
   export function parseValueByDataType(value: any, dataType?: BrunoVariableDataType): any;
   export function valueToString(value: unknown, indent?: number): string;
+  export function validateDataTypeValue(value: any, dataType?: BrunoVariableDataType): string | null;
 }
 
 declare module '@usebruno/schema' {
