@@ -8,6 +8,7 @@ import {
   hasHandler
 } from '../ipc/handlers';
 import { storeTransientItem }  from '../panels/transient-request-panel';
+import { WebviewHelper } from '../webview/helper';
 
 interface IpcMessage {
   type: 'invoke' | 'send';
@@ -473,41 +474,11 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private _findWebviewAssets(): { jsFiles: string[]; cssFiles: string[] } {
-    const jsDir = path.join(this._extensionUri.fsPath, 'dist', 'webview', 'static', 'js');
-    const cssDir = path.join(this._extensionUri.fsPath, 'dist', 'webview', 'static', 'css');
-
-    const jsFiles: string[] = [];
-    const cssFiles: string[] = [];
-
-    if (fs.existsSync(jsDir)) {
-      const files = fs.readdirSync(jsDir);
-      for (const file of files) {
-        if (file.endsWith('.js')) {
-          jsFiles.push(file);
-        }
-      }
-    }
-
-    if (fs.existsSync(cssDir)) {
-      const files = fs.readdirSync(cssDir);
-      for (const file of files) {
-        if (file.endsWith('.css')) {
-          cssFiles.push(file);
-        }
-      }
-    }
-
-    return { jsFiles, cssFiles };
-  }
-
   private _getHtmlForWebview(webview: vscode.Webview): string {
-    const { jsFiles, cssFiles } = this._findWebviewAssets();
+    const htmlPath = path.join(this._extensionUri.fsPath, 'dist', 'webview', 'index.html');
+    const { scripts, styles } = WebviewHelper.extractAssetsFromHtml(htmlPath);
 
-    const webviewJsPath = path.join(this._extensionUri.fsPath, 'dist', 'webview', 'static', 'js', 'index.js');
-    const webviewExists = fs.existsSync(webviewJsPath);
-
-    if (!webviewExists) {
+    if (!scripts.length) {
       return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -553,27 +524,12 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
 </html>`;
     }
 
-    const cssLinks = cssFiles.map(file => {
-      const uri = webview.asWebviewUri(
-        vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview', 'static', 'css', file)
-      );
-      return `<link href="${uri}" rel="stylesheet">`;
-    }).join('\n    ');
+    const toWebviewUri = (relativeAssetPath: string) => webview.asWebviewUri(
+      vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview', ...relativeAssetPath.split('/').filter(Boolean))
+    );
 
-    const sortedJsFiles = jsFiles.sort((a, b) => {
-      if (a.includes('vendor')) return -1;
-      if (b.includes('vendor')) return 1;
-      if (a === 'index.js') return 1;
-      if (b === 'index.js') return -1;
-      return 0;
-    });
-
-    const scriptTags = sortedJsFiles.map(file => {
-      const uri = webview.asWebviewUri(
-        vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview', 'static', 'js', file)
-      );
-      return `<script defer src="${uri}"></script>`;
-    }).join('\n    ');
+    const cssLinks = styles.map((s) => `<link href="${toWebviewUri(s)}" rel="stylesheet">`).join('\n    ');
+    const scriptTags = scripts.map((s) => `<script defer src="${toWebviewUri(s)}"></script>`).join('\n    ');
 
     return `<!DOCTYPE html>
 <html lang="en">
