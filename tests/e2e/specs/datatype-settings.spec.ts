@@ -64,6 +64,15 @@ test.describe('Data types in collection & environment variables', () => {
     // AC2: selector reflects the on-disk data type.
     await expect(settings.locator('[data-testid="datatype-selector-cfg"]')).toContainText('object');
     await expect(settings.locator('[data-testid="datatype-selector-tok"]')).toContainText('string');
+
+    // AC3/AC4: change tok -> number and Save; the collection file gains @number, @object survives.
+    const collectionFile = path.join(collectionDir, 'collection.bru');
+    await settings.locator('[data-testid="datatype-selector-tok"]').click();
+    await settings.locator('[data-testid="datatype-selector-tok-number"]').click();
+    await expect(settings.locator('[data-testid="datatype-selector-tok"]')).toContainText('number');
+    await settings.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect.poll(() => fs.readFileSync(collectionFile, 'utf8'), { timeout: 15_000 }).toContain('@number');
+    expect(fs.readFileSync(collectionFile, 'utf8')).toContain('@object');
   });
 
   test('environment Vars: typed values display, and choosing a type persists it to the env file', async ({ page, tmpDir }) => {
@@ -135,5 +144,14 @@ test.describe('Data types in collection & environment variables', () => {
     await expect(table).not.toContainText('[object Object]');
     await expect(settings.locator('[data-testid="datatype-selector-cfg"]')).toContainText('object');
     await expect(settings.locator('[data-testid="datatype-selector-tok"]')).toContainText('string');
+
+    // AC3/AC4: change tok -> number and Save; the folder file gains @number, @object survives.
+    const folderFile = path.join(collectionDir, 'sub', 'folder.bru');
+    await settings.locator('[data-testid="datatype-selector-tok"]').click();
+    await settings.locator('[data-testid="datatype-selector-tok-number"]').click();
+    await expect(settings.locator('[data-testid="datatype-selector-tok"]')).toContainText('number');
+    await settings.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect.poll(() => fs.readFileSync(folderFile, 'utf8'), { timeout: 15_000 }).toContain('@number');
+    expect(fs.readFileSync(folderFile, 'utf8')).toContain('@object');
   });
 });
