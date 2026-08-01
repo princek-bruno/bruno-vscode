@@ -126,6 +126,7 @@ const VarsTable = ({
   return (
     <StyledWrapper className="w-full">
       <EditableTable
+        testId={`request-vars-${varType === 'request' ? 'req' : 'res'}`}
         columns={columns}
         rows={vars || []}
         onChange={handleVarsChange}

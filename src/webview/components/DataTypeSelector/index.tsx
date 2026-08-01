@@ -7,7 +7,7 @@ import MenuDropdown from 'ui/MenuDropdown';
 import StyledWrapper from './StyledWrapper';
 
 interface DataTypeSelectorProps {
-  variable: { uid?: string; value?: unknown; dataType?: BrunoVariableDataType };
+  variable: { uid?: string; name?: string; value?: unknown; dataType?: BrunoVariableDataType };
   onChange: (fields: { dataType?: BrunoVariableDataType }) => void;
 }
 
@@ -36,6 +36,7 @@ const DataTypeSelector = ({ variable, onChange }: DataTypeSelectorProps) => {
           placement="bottom-end"
           showTickMark={true}
           appendTo={() => document.body}
+          data-testid={`datatype-selector-${variable.name || 'new'}`}
         >
           <div className="flex items-center cursor-pointer select-none">
             <span className="type-label">{selectedType}</span>
