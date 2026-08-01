@@ -30,7 +30,13 @@ const DataTypeSelector = ({ variable, onChange }: DataTypeSelectorProps) => {
   return (
     <StyledWrapper>
       <div className="flex items-center relative">
-        <MenuDropdown items={items} selectedItemId={selectedType} placement="bottom-end" showTickMark={true}>
+        <MenuDropdown
+          items={items}
+          selectedItemId={selectedType}
+          placement="bottom-end"
+          showTickMark={true}
+          appendTo={() => document.body}
+        >
           <div className="flex items-center cursor-pointer select-none">
             <span className="type-label">{selectedType}</span>
             <IconCaretDown className="caret-icon ml-1" size={14} strokeWidth={2} />
