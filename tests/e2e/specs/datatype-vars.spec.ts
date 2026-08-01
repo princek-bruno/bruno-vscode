@@ -92,11 +92,20 @@ test.describe('Data types in request variables', () => {
       await expect(editor.locator(`[data-testid="datatype-selector-token-${type}"]`)).toBeVisible();
     }
 
-    // AC4 (UI): choosing a type applies it, and returning to the implicit 'string' default works.
+    // AC4: choosing a type applies it in the UI and persists to disk on save (Cmd/Ctrl+S).
+    const requestFile = path.join(findCollectionDir(tmpDir), 'Typed.bru');
     await editor.locator('[data-testid="datatype-selector-token-number"]').click();
     await expect(tokenSelector).toContainText('number');
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+S' : 'Control+S');
+    await expect.poll(() => fs.readFileSync(requestFile, 'utf8'), { timeout: 15_000 }).toContain('@number');
+
+    // Reverting to the implicit 'string' default drops the annotation on disk.
     await tokenSelector.click();
     await editor.locator('[data-testid="datatype-selector-token-string"]').click();
     await expect(tokenSelector).toContainText('string');
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+S' : 'Control+S');
+    await expect.poll(() => fs.readFileSync(requestFile, 'utf8'), { timeout: 15_000 }).not.toContain('@number');
+    // The object var's annotation is untouched throughout.
+    expect(fs.readFileSync(requestFile, 'utf8')).toContain('@object');
   });
 });
