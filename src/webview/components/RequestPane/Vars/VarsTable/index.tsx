@@ -6,9 +6,11 @@ import { sendRequest, saveRequest } from 'providers/ReduxStore/slices/collection
 import MultiLineEditor from 'components/MultiLineEditor';
 import InfoTip from 'components/InfoTip';
 import EditableTable from 'components/EditableTable';
+import DataTypeSelector from 'components/DataTypeSelector';
 import StyledWrapper from './StyledWrapper';
 import toast from 'react-hot-toast';
 import { variableNameRegex } from 'utils/common/regex';
+import { valueToString } from '@usebruno/common/utils';
 
 interface VarsTableProps {
   item: any;
@@ -87,16 +89,30 @@ const VarsTable = ({
         onChange,
         isLastEmptyRow
       }: any) => (
-        <MultiLineEditor
-          value={value || ''}
-          theme={storedTheme}
-          onSave={onSave}
-          onChange={onChange}
-          onRun={handleRun}
-          collection={collection}
-          item={item}
-          placeholder={isLastEmptyRow ? (varType === 'request' ? 'Value' : 'Expr') : ''}
-        />
+        <div className="flex items-center w-full gap-2">
+          <div className="flex-1 min-w-0">
+            <MultiLineEditor
+              value={valueToString(value)}
+              theme={storedTheme}
+              onSave={onSave}
+              onChange={onChange}
+              onRun={handleRun}
+              collection={collection}
+              item={item}
+              placeholder={isLastEmptyRow ? (varType === 'request' ? 'Value' : 'Expr') : ''}
+            />
+          </div>
+          {/* Data types apply to literal request-var values, not to the JS expression of a response var. */}
+          {!isLastEmptyRow && varType === 'request' && (
+            <DataTypeSelector
+              variable={row}
+              onChange={(fields) => {
+                const updated = (vars || []).map((v: any) => (v.uid === row.uid ? { ...v, ...fields } : v));
+                handleVarsChange(updated);
+              }}
+            />
+          )}
+        </div>
       )
     }
   ];
