@@ -2,27 +2,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { Page, Frame } from '@playwright/test';
 import { test, expect } from '../utils/fixtures';
-import { openBrunoSidebar, createCollection, openRequest } from '../utils/page/actions';
+import { openBrunoSidebar, createCollection, openRequest, findCollectionDir } from '../utils/page/actions';
 import { getActiveEditorFrame } from '../utils/page/oauth2-actions';
-
-// Find the collection directory created under tmpDir (the folder containing bruno.json).
-function findCollectionDir(root: string): string {
-  const stack = [root];
-  while (stack.length) {
-    const dir = stack.pop() as string;
-    let entries: fs.Dirent[] = [];
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    if (entries.some((e) => e.isFile() && e.name === 'bruno.json')) return dir;
-    for (const e of entries) {
-      if (e.isDirectory()) stack.push(path.join(dir, e.name));
-    }
-  }
-  throw new Error(`No collection (bruno.json) found under ${root}`);
-}
 
 // A request with a typed (object) pre-request var, a plain string pre-request var,
 // and a post-response var (which holds a JS expression, so it must NOT get a type).
@@ -70,29 +51,29 @@ test.describe('Data types in request variables', () => {
     const reqTable = editor.locator('[data-testid="request-vars-req"]');
     await expect(reqTable).toBeVisible({ timeout: 15_000 });
 
-    // AC1: the @object var round-trips from disk and renders as JSON, never "[object Object]".
+    // The @object var round-trips from disk and renders as JSON, never "[object Object]".
     await expect(reqTable).toContainText('{"host":"localhost"}');
     await expect(reqTable).not.toContainText('[object Object]');
 
-    // AC2: the type selector reflects the parsed data type per row.
+    // The type selector reflects the parsed data type per row.
     const cfgSelector = editor.locator('[data-testid="datatype-selector-cfg"]');
     const tokenSelector = editor.locator('[data-testid="datatype-selector-token"]');
     await expect(cfgSelector).toContainText('object');
     await expect(tokenSelector).toContainText('string');
 
-    // AC3: post-response vars hold a JS expression, so no data-type selector is offered.
+    // Post-response vars hold a JS expression, so no data-type selector is offered.
     const resTable = editor.locator('[data-testid="request-vars-res"]');
     await expect(resTable).toBeVisible();
     await expect(resTable.locator('[data-testid^="datatype-selector-"]')).toHaveCount(0);
 
-    // AC5: the dropdown is portaled to the body, so every option is reachable/visible even
-    // though it opens over the last row / table edge (the z-order fix).
+    // The dropdown is portaled to the body, so every option is reachable/visible even
+    // though it opens over the last row / table edge.
     await tokenSelector.click();
     for (const type of ['string', 'number', 'boolean', 'object']) {
       await expect(editor.locator(`[data-testid="datatype-selector-token-${type}"]`)).toBeVisible();
     }
 
-    // AC4: choosing a type applies it in the UI and persists to disk on save (Cmd/Ctrl+S).
+    // Choosing a type applies it in the UI and persists to disk on save (Cmd/Ctrl+S).
     const requestFile = path.join(findCollectionDir(tmpDir), 'Typed.bru');
     await editor.locator('[data-testid="datatype-selector-token-number"]').click();
     await expect(tokenSelector).toContainText('number');

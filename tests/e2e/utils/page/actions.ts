@@ -1,5 +1,28 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { Page, Frame, Locator, expect } from '@playwright/test';
 import { buildCommonLocators } from './locators';
+
+/**
+ * Locate the collection directory (the folder containing bruno.json) created under a test's tmpDir.
+ */
+export function findCollectionDir(root: string): string {
+  const stack = [root];
+  while (stack.length) {
+    const dir = stack.pop() as string;
+    let entries: fs.Dirent[] = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    if (entries.some((e) => e.isFile() && e.name === 'bruno.json')) return dir;
+    for (const e of entries) {
+      if (e.isDirectory()) stack.push(path.join(dir, e.name));
+    }
+  }
+  throw new Error(`No collection (bruno.json) found under ${root}`);
+}
 
 /**
  * Find the webview Frame that contains actual Bruno app content.

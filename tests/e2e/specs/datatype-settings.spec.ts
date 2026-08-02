@@ -2,26 +2,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { Page, Frame } from '@playwright/test';
 import { test, expect } from '../utils/fixtures';
-import { openBrunoSidebar, createCollection, openRequest, createFolder } from '../utils/page/actions';
+import { openBrunoSidebar, createCollection, openRequest, createFolder, findCollectionDir } from '../utils/page/actions';
 import { buildCommonLocators } from '../utils/page/locators';
-
-function findCollectionDir(root: string): string {
-  const stack = [root];
-  while (stack.length) {
-    const dir = stack.pop() as string;
-    let entries: fs.Dirent[] = [];
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    if (entries.some((e) => e.isFile() && e.name === 'bruno.json')) return dir;
-    for (const e of entries) {
-      if (e.isDirectory()) stack.push(path.join(dir, e.name));
-    }
-  }
-  throw new Error(`No collection (bruno.json) found under ${root}`);
-}
 
 // Scan the webview frames for the one exposing `marker`, re-acquiring after a panel opens.
 async function frameWith(page: Page, marker: string, timeout = 15_000): Promise<Frame> {
@@ -58,14 +40,14 @@ test.describe('Data types in collection & environment variables', () => {
 
     const table = settings.locator('[data-testid="collection-vars-req"]');
     await expect(table).toBeVisible({ timeout: 15_000 });
-    // AC1/AC6: parsed from disk, object renders as JSON and the collection doesn't break.
+    // Parsed from disk, the object renders as JSON and the collection doesn't break.
     await expect(table).toContainText('{"host":"localhost"}');
     await expect(table).not.toContainText('[object Object]');
-    // AC2: selector reflects the on-disk data type.
+    // The selector reflects the on-disk data type.
     await expect(settings.locator('[data-testid="datatype-selector-cfg"]')).toContainText('object');
     await expect(settings.locator('[data-testid="datatype-selector-tok"]')).toContainText('string');
 
-    // AC3/AC4: change tok -> number and Save; the collection file gains @number, @object survives.
+    // Change tok -> number and Save; the collection file gains @number, @object survives.
     const collectionFile = path.join(collectionDir, 'collection.bru');
     await settings.locator('[data-testid="datatype-selector-tok"]').click();
     await settings.locator('[data-testid="datatype-selector-tok-number"]').click();
@@ -100,7 +82,7 @@ test.describe('Data types in collection & environment variables', () => {
     await editor.locator('#configure-env').click();
 
     const envSettings = await frameWith(page, '[data-testid="save-env"]');
-    // AC1/AC6: the @object env var round-trips from disk and renders as JSON (the env editor
+    // The @object env var round-trips from disk and renders as JSON (the env editor
     // pretty-prints, so assert on format-agnostic substrings rather than the exact JSON string).
     const cfgRow = envSettings.locator('[data-testid="env-var-row-cfg"]');
     await expect(cfgRow).toContainText('"host"');
@@ -108,7 +90,7 @@ test.describe('Data types in collection & environment variables', () => {
     await expect(cfgRow).not.toContainText('[object Object]');
     await expect(envSettings.locator('[data-testid="datatype-selector-cfg"]')).toContainText('object');
 
-    // AC3/AC4: change `tok` to number and save — the env file gains the @number annotation.
+    // Change `tok` to number and save — the env file gains the @number annotation.
     await envSettings.locator('[data-testid="datatype-selector-tok"]').click();
     await envSettings.locator('[data-testid="datatype-selector-tok-number"]').click();
     await expect(envSettings.locator('[data-testid="datatype-selector-tok"]')).toContainText('number');
@@ -135,7 +117,7 @@ test.describe('Data types in collection & environment variables', () => {
     await folderRow.locator('[data-testid="collection-item-menu"]').click();
     await sidebar.locator('[role="menuitem"]').filter({ hasText: 'Settings' }).click();
 
-    const settings = await frameWith(page, '[role="tab"]');
+    const settings = await frameWith(page, '[data-testid="folder-settings"]');
     await settings.locator('[role="tab"]').filter({ hasText: 'Vars' }).first().click();
 
     const table = settings.locator('[data-testid="folder-vars-req"]');
@@ -145,7 +127,7 @@ test.describe('Data types in collection & environment variables', () => {
     await expect(settings.locator('[data-testid="datatype-selector-cfg"]')).toContainText('object');
     await expect(settings.locator('[data-testid="datatype-selector-tok"]')).toContainText('string');
 
-    // AC3/AC4: change tok -> number and Save; the folder file gains @number, @object survives.
+    // Change tok -> number and Save; the folder file gains @number, @object survives.
     const folderFile = path.join(collectionDir, 'sub', 'folder.bru');
     await settings.locator('[data-testid="datatype-selector-tok"]').click();
     await settings.locator('[data-testid="datatype-selector-tok-number"]').click();
