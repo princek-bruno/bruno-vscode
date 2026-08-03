@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { Page, Frame } from '@playwright/test';
 import { test, expect } from '../utils/fixtures';
-import { openBrunoSidebar, createCollection, openRequest, findCollectionDir } from '../utils/page/actions';
+import { openBrunoSidebar, createCollection, openRequest, openRequestPaneTab, findCollectionDir } from '../utils/page/actions';
 import { getActiveEditorFrame } from '../utils/page/oauth2-actions';
 
 // A request with a typed (object) pre-request var, a plain string pre-request var,
@@ -27,19 +27,6 @@ async function openTypedVars(page: Page, tmpDir: string): Promise<Frame> {
   const editor = await getActiveEditorFrame(page, opened);
   await openRequestPaneTab(editor, 'Vars');
   return editor;
-}
-
-// The request-pane tabs collapse into a ">>" overflow menu when the pane is narrow, so a plain
-// role="tab" match misses tabs like Vars. Click it directly if visible, else via the overflow menu.
-async function openRequestPaneTab(editor: Frame, tabName: string): Promise<void> {
-  const directTab = editor.locator('[role="tab"]').filter({ hasText: tabName }).first();
-  if (await directTab.isVisible().catch(() => false)) {
-    await directTab.click();
-    return;
-  }
-  await editor.locator('.more-tabs').click();
-  await editor.locator(`[data-testid="menu-dropdown-${tabName.toLowerCase()}"]`).click();
-  await expect(editor.locator('[role="tab"]').filter({ hasText: tabName }).first()).toBeVisible({ timeout: 15_000 });
 }
 
 // One VS Code launch, every acceptance criterion checked in sequence — launching a fresh
