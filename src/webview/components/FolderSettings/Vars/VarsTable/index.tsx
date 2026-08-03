@@ -5,7 +5,7 @@ import { saveFolderRoot } from 'providers/ReduxStore/slices/collections/actions'
 import MultiLineEditor from 'components/MultiLineEditor';
 import InfoTip from 'components/InfoTip';
 import EditableTable from 'components/EditableTable';
-import DataTypeSelector from 'components/DataTypeSelector';
+import VarsDataTypeSelector from 'components/DataTypeSelector/VarsDataTypeSelector';
 import StyledWrapper from './StyledWrapper';
 import toast from 'react-hot-toast';
 import { variableNameRegex } from 'utils/common/regex';
@@ -84,16 +84,7 @@ const VarsTable = ({
               placeholder={isLastEmptyRow ? (varType === 'request' ? 'Value' : 'Expr') : ''}
             />
           </div>
-          {/* Data types apply to literal request-var values, not to the JS expression of a response var. */}
-          {!isLastEmptyRow && varType === 'request' && (
-            <DataTypeSelector
-              variable={row}
-              onChange={(fields) => {
-                const updated = (vars || []).map((v: any) => (v.uid === row.uid ? { ...v, ...fields } : v));
-                handleVarsChange(updated);
-              }}
-            />
-          )}
+          <VarsDataTypeSelector row={row} vars={vars} isLastEmptyRow={isLastEmptyRow} varType={varType} onVarsChange={handleVarsChange} />
         </div>
       )
     }
