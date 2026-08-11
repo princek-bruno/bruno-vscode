@@ -202,6 +202,7 @@ const ResponsiveTabs = ({
         key={tab.key}
         role="tab"
         aria-selected={isActive}
+        data-testid={`responsive-tab-${tab.key}`}
         className={classnames('tab select-none', tab.key, { active: isActive })}
         onClick={() => handleTabSelect(tab.key)}
       >

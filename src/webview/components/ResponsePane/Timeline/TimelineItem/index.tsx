@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { IconChevronDown, IconChevronRight } from '@tabler/icons';
 import { useTheme } from 'providers/Theme';
 import Network from './Network/index';
 import Request from './Request/index';
@@ -28,21 +29,38 @@ const TimelineItem = ({
   hideTimestamp = false
 }: any) => {
   const { theme } = useTheme();
-  const [isCollapsed, _toggleCollapse] = useState(false);
+  const [isExpanded, _toggleExpand] = useState(false);
   const [activeTab, setActiveTab] = useState('request');
-  const toggleCollapse = () => _toggleCollapse((prev) => !prev);
+  const toggleExpand = () => _toggleExpand((prev) => !prev);
+  const handleRowKeyDown = (ev: React.KeyboardEvent) => {
+    if (ev.key === 'Enter' || ev.key === ' ') {
+      ev.preventDefault();
+      toggleExpand();
+    }
+  };
   const { method, status, statusCode, statusText, url = '' } = request || {};
   const { status: responseStatus, statusCode: responseStatusCode, statusText: responseStatusText } = response || {};
-  const showNetworkLogs = response.timeline && response.timeline.length > 0;
+  const showNetworkLogs = response?.timeline?.length > 0;
 
   return (
     <StyledWrapper>
       <div className={`timeline-item ${isOauth2 ? 'timeline-item--oauth2' : ''}`}>
-        <div className="oauth-request-item-header relative cursor-pointer flex items-center justify-between gap-3 min-w-0" onClick={toggleCollapse}>
+        <div
+          className="oauth-request-item-header relative cursor-pointer flex items-center justify-between gap-3 min-w-0"
+          role="button"
+          tabIndex={0}
+          aria-expanded={isExpanded}
+          onClick={toggleExpand}
+          onKeyDown={handleRowKeyDown}
+          data-testid="timeline-item-header"
+        >
+          <span className="timeline-item-chevron flex-shrink-0" aria-hidden="true">
+            {isExpanded ? <IconChevronDown size={14} strokeWidth={2} /> : <IconChevronRight size={14} strokeWidth={2} />}
+          </span>
           <Status statusCode={responseStatus || responseStatusCode} statusText={responseStatusText} />
           <div className="flex items-center gap-1">
             <Method method={method} />
-            <div className="truncate flex-1 min-w-0">{url}</div>
+            <div className="truncate flex-1 min-w-0" data-testid="timeline-url">{url}</div>
             {isOauth2 && <span className="text-xs flex-shrink-0" style={{ color: theme.colors.text.muted }}>[oauth2.0]</span>}
           </div>
           {!hideTimestamp && (
@@ -51,8 +69,8 @@ const TimelineItem = ({
             </span>
           )}
         </div>
-        {isCollapsed && (
-          <div className="timeline-item-content">
+        {isExpanded && (
+          <div className="timeline-item-content" data-testid="timeline-item-detail">
             <div className="timeline-item-tabs">
               <button
                 className={`timeline-item-tab ${activeTab === 'request' ? 'timeline-item-tab--active' : ''}`}

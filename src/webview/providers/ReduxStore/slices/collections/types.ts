@@ -2,7 +2,7 @@
  * Payload types for collection slice reducers
  */
 import type { UID, KeyValue, AuthMode, BrunoVariableDataType } from '@bruno-types';
-import type { AppCollection, AppItem, SecurityConfig } from '@bruno-types';
+import type { AppCollection, AppItem, RequestSent, SecurityConfig } from '@bruno-types';
 
 export interface CollectionUidPayload {
   collectionUid: UID;
@@ -107,7 +107,8 @@ export interface ProcessEnvUpdateEventPayload extends CollectionUidPayload {
 export interface RequestCancelledPayload extends ItemUidPayload {}
 
 export interface ResponseReceivedPayload extends ItemUidPayload {
-  response: Record<string, unknown>;
+  response: Record<string, unknown> | null;
+  requestSent?: RequestSent;
 }
 
 export interface RunGrpcRequestEventPayload extends ItemUidPayload {
@@ -551,7 +552,7 @@ export interface RunFolderEventPayload extends CollectionUidPayload {
   isRecursive?: boolean;
   cancelTokenUid?: UID;
   error?: string;
-  requestSent?: Record<string, unknown>;
+  requestSent?: RequestSent;
   responseReceived?: Record<string, unknown>;
   testResults?: unknown[];
   preRequestTestResults?: unknown[];

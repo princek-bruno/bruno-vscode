@@ -1,6 +1,7 @@
 export type {
   HttpResponse,
   ResponseTimeline,
+  NetworkLogEntry,
   GrpcResponse,
   WebSocketState,
   WebSocketMessageLog,
