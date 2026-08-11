@@ -22,6 +22,7 @@ import HeightBoundContainer from 'ui/HeightBoundContainer';
 import ResponseStopWatch from 'components/ResponsePane/ResponseStopWatch';
 import WSMessagesList from './WsResponsePane/WSMessagesList';
 import ResponsiveTabs from 'ui/ResponsiveTabs';
+import { hasScriptError } from '@bruno-types';
 
 interface RIGHT_CONTENT_EXPANDED_WIDTHProps {
   item?: React.ReactNode;
@@ -76,11 +77,10 @@ const ResponsePane = ({
     dispatch(updateResponseViewTab({ uid: item.uid, responseViewTab: newViewTab }));
   }, [dispatch, item.uid]);
 
+  // Keyed on the item because this pane instance is reused as the selection changes.
   useEffect(() => {
-    if (item?.preRequestScriptErrorMessage || item?.postResponseScriptErrorMessage || item?.testScriptErrorMessage) {
-      setShowScriptErrorCard(true);
-    }
-  }, [item?.preRequestScriptErrorMessage, item?.postResponseScriptErrorMessage, item?.testScriptErrorMessage]);
+    setShowScriptErrorCard(hasScriptError(item) && !response.error);
+  }, [item?.uid, hasScriptError(item), response.error]);
 
   const selectTab = (tab: any) => {
     dispatch(
@@ -107,7 +107,8 @@ const ResponsePane = ({
   }, [response.size, response.dataBuffer]);
   const responseHeadersCount = typeof response.headers === 'object' ? Object.entries(response.headers).length : 0;
 
-  const hasScriptError = item?.preRequestScriptErrorMessage || item?.postResponseScriptErrorMessage || item?.testScriptErrorMessage;
+  // A request that failed on its own terms is the actionable error, so the card stands aside.
+  const showScriptError = hasScriptError(item) && !response.error;
 
   const allTabs = useMemo((): Array<{ key: string; label: React.ReactNode; indicator: React.ReactNode }> => {
     return [
@@ -211,7 +212,7 @@ const ResponsePane = ({
 
   const rightContent = !isLoading ? (
     <div ref={rightContentRef} className="flex justify-end items-center right-side-container gap-3">
-      {hasScriptError && !showScriptErrorCard && (
+      {showScriptError && !showScriptErrorCard && (
         <ScriptErrorIcon
           itemUid={item.uid}
           onClick={() => setShowScriptErrorCard(true)}
@@ -279,9 +280,10 @@ const ResponsePane = ({
         }}
       >
         {isLoading ? <Overlay item={item} collection={collection} /> : null}
-        {hasScriptError && showScriptErrorCard && (
+        {showScriptError && showScriptErrorCard && (
           <ScriptError
             item={item}
+            collection={collection}
             onClose={() => setShowScriptErrorCard(false)}
           />
         )}

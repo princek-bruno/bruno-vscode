@@ -1,0 +1,174 @@
+import * as fs from 'fs';
+import * as path from 'path';
+import { test, expect } from '../utils/fixtures';
+import { openBrunoSidebar, createCollection, openRequest, sendRequest, findCollectionDir } from '../utils/page/actions';
+
+const TEST_SERVER = 'http://127.0.0.1:8081';
+
+// `bru.setEnvVar` rejects names with spaces, so the failure comes from the sandbox itself.
+const FAILING_REQUEST_BRU = [
+  'meta {', '  name: Boom', '  type: http', '  seq: 1', '}', '',
+  'get {', `  url: ${TEST_SERVER}/capture`, '  body: none', '  auth: inherit', '}', '',
+  'script:post-response {',
+  '  const a = 1;',
+  '  bru.setEnvVar("Bad Name", "x");',
+  '  console.log(a);',
+  '}',
+  ''
+].join('\n');
+
+test.describe('Script errors in the response pane', () => {
+  test('a failing post-response script renders a card with the source line and stack', async ({ page, tmpDir }) => {
+    const sidebar = await openBrunoSidebar(page);
+    const collectionName = 'Script Error';
+
+    await createCollection(page, sidebar, collectionName, tmpDir, 'bru');
+
+    const collectionDir = findCollectionDir(tmpDir);
+    fs.writeFileSync(path.join(collectionDir, 'Boom.bru'), FAILING_REQUEST_BRU, 'utf8');
+
+    const editor = await openRequest(page, sidebar, collectionName, 'Boom');
+    await sendRequest(editor, 200);
+
+    const card = editor.locator('[data-testid="script-error-card"]').first();
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    await expect(card.locator('[data-testid="script-error-title"]')).toHaveText('Post-Response Script Error');
+    await expect(card.locator('[data-testid="script-error-message"]')).toContainText('contains invalid characters');
+
+    await expect(card.locator('[data-testid="script-error-source-label"]')).toContainText('Request');
+    await expect(card.locator('[data-testid="script-error-file-path"]')).toHaveText('Boom.bru');
+    await expect(card.locator('[data-testid="code-line-error"]')).toContainText('bru.setEnvVar("Bad Name", "x")');
+
+    await expect(card.locator('[data-testid="script-error-stack"]')).toHaveCount(0);
+    await card.locator('[data-testid="script-error-stack-toggle"]').click();
+    await expect(card.locator('[data-testid="script-error-stack"]')).toContainText('Boom.bru');
+
+    await card.locator('[data-testid="script-error-close"]').click();
+    await expect(card).toBeHidden();
+  });
+
+  test('variables written before a script throws are still applied and persisted', async ({ page, tmpDir }) => {
+    const sidebar = await openBrunoSidebar(page);
+    const collectionName = 'Partial Script Writes';
+
+    await createCollection(page, sidebar, collectionName, tmpDir, 'bru');
+
+    const collectionDir = findCollectionDir(tmpDir);
+    fs.mkdirSync(path.join(collectionDir, 'environments'), { recursive: true });
+    fs.writeFileSync(path.join(collectionDir, 'environments', 'Local.bru'), 'vars {\n  seed: SEED\n}\n', 'utf8');
+    fs.writeFileSync(path.join(collectionDir, 'Boom.bru'), [
+      'meta {', '  name: Boom', '  type: http', '  seq: 1', '}', '',
+      'get {', `  url: ${TEST_SERVER}/capture`, '  body: none', '  auth: inherit', '}', '',
+      'script:post-response {',
+      "  bru.setEnvVar('envTok', 'ENVVAL');",
+      "  bru.setEnvVar('Bad Name', 'x');",
+      '}',
+      ''
+    ].join('\n'), 'utf8');
+
+    const editor = await openRequest(page, sidebar, collectionName, 'Boom');
+
+    await editor.locator('[data-testid="environment-selector-trigger"]').click();
+    await editor.locator('.dropdown-item').filter({ hasText: 'Local' }).first().click();
+
+    await sendRequest(editor, 200);
+
+    await expect(editor.locator('[data-testid="script-error-card"]').first()).toBeVisible({ timeout: 15_000 });
+
+    const envFile = path.join(collectionDir, 'environments', 'Local.bru');
+    await expect.poll(() => fs.readFileSync(envFile, 'utf8'), { timeout: 15_000 }).toContain('envTok: ENVVAL');
+  });
+  test('a failing collection-level script is attributed to the collection, not the request', async ({ page, tmpDir }) => {
+    const sidebar = await openBrunoSidebar(page);
+    const collectionName = 'Inherited Script Error';
+
+    await createCollection(page, sidebar, collectionName, tmpDir, 'bru');
+
+    const collectionDir = findCollectionDir(tmpDir);
+    fs.writeFileSync(path.join(collectionDir, 'collection.bru'), [
+      'script:post-response {',
+      '  const fromCollection = 1;',
+      "  throw new Error('boom from collection');",
+      '}',
+      ''
+    ].join('\n'), 'utf8');
+
+    // No request-level script, so this only resolves if a segment is recorded for the collection.
+    fs.writeFileSync(path.join(collectionDir, 'Boom.bru'), [
+      'meta {', '  name: Boom', '  type: http', '  seq: 1', '}', '',
+      'get {', `  url: ${TEST_SERVER}/capture`, '  body: none', '  auth: inherit', '}', ''
+    ].join('\n'), 'utf8');
+
+    const editor = await openRequest(page, sidebar, collectionName, 'Boom');
+    await sendRequest(editor, 200);
+
+    const card = editor.locator('[data-testid="script-error-card"]').first();
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    await expect(card.locator('[data-testid="script-error-source-label"]')).toContainText('Collection');
+    await expect(card.locator('[data-testid="script-error-file-path"]')).toHaveText('collection.bru');
+    await expect(card.locator('[data-testid="code-line-error"]')).toContainText("throw new Error('boom from collection')");
+  });
+  test('an empty url with no script at all reports the url', async ({ page, tmpDir }) => {
+    const sidebar = await openBrunoSidebar(page);
+    const collectionName = 'Empty Url';
+
+    await createCollection(page, sidebar, collectionName, tmpDir, 'bru');
+
+    const collectionDir = findCollectionDir(tmpDir);
+    fs.writeFileSync(path.join(collectionDir, 'NoUrl.bru'), [
+      'meta {', '  name: NoUrl', '  type: http', '  seq: 1', '}', '',
+      'get {', '  url: ', '  body: none', '  auth: inherit', '}', ''
+    ].join('\n'), 'utf8');
+
+    const editor = await openRequest(page, sidebar, collectionName, 'NoUrl');
+    await editor.locator('#send-request').click();
+
+    await expect(editor.locator('.error').first()).toContainText('URL', { timeout: 15_000 });
+    await expect(editor.locator('[data-testid="script-error-card"]')).toHaveCount(0);
+  });
+  test('a request that fails on its own shows that error, not the script error', async ({ page, tmpDir }) => {
+    const sidebar = await openBrunoSidebar(page);
+    const collectionName = 'Bad Host';
+
+    await createCollection(page, sidebar, collectionName, tmpDir, 'bru');
+
+    const collectionDir = findCollectionDir(tmpDir);
+    fs.writeFileSync(path.join(collectionDir, 'BadHost.bru'), [
+      'meta {', '  name: BadHost', '  type: http', '  seq: 1', '}', '',
+      'get {', '  url: http://does-not-exist-bruno-test.invalid/x', '  body: none', '  auth: inherit', '}', '',
+      'script:pre-request {',
+      "  bru.setEnvVar('Bad Name', 'x');",
+      '}',
+      ''
+    ].join('\n'), 'utf8');
+
+    const editor = await openRequest(page, sidebar, collectionName, 'BadHost');
+    await editor.locator('#send-request').click();
+
+    await expect(editor.locator('.error').first()).toContainText('does-not-exist-bruno-test.invalid', { timeout: 30_000 });
+    await expect(editor.locator('[data-testid="script-error-card"]')).toHaveCount(0);
+  });
+
+  test('an empty url wins over a script error raised in the same send', async ({ page, tmpDir }) => {
+    const sidebar = await openBrunoSidebar(page);
+    const collectionName = 'Empty Url Script';
+
+    await createCollection(page, sidebar, collectionName, tmpDir, 'bru');
+
+    const collectionDir = findCollectionDir(tmpDir);
+    fs.writeFileSync(path.join(collectionDir, 'NoUrl.bru'), [
+      'meta {', '  name: NoUrl', '  type: http', '  seq: 1', '}', '',
+      'get {', '  url: ', '  body: none', '  auth: inherit', '}', '',
+      'script:pre-request {',
+      "  bru.setEnvVar('Bad Name', 'x');",
+      '}',
+      ''
+    ].join('\n'), 'utf8');
+
+    const editor = await openRequest(page, sidebar, collectionName, 'NoUrl');
+    await editor.locator('#send-request').click();
+
+    await expect(editor.locator('.error').first()).toContainText('URL', { timeout: 15_000 });
+    await expect(editor.locator('[data-testid="script-error-card"]')).toHaveCount(0);
+  });
+});

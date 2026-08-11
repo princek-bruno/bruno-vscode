@@ -97,6 +97,10 @@ class GlobalEnvironmentsStore {
         if (!v.type) {
           v.type = 'text';
         }
+        // These live in globalState, so they never pass through the filestore layer that coerces.
+        if (v.dataType && v.dataType !== 'string' && !v.secret) {
+          v.value = parseValueByDataType(v.value, v.dataType);
+        }
       });
     });
 

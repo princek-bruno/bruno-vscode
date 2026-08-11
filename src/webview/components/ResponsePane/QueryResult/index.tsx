@@ -176,8 +176,6 @@ const QueryResult = ({
   }, [selectedFormat]);
 
   const queryFilterEnabled = useMemo(() => codeMirrorMode.includes('json') && selectedFormat === 'json' && selectedTab === 'editor', [codeMirrorMode, selectedFormat, selectedTab]);
-  const hasScriptError = item.preRequestScriptErrorMessage || item.postResponseScriptErrorMessage;
-
   return (
     <StyledWrapper
       className="w-full h-full relative flex"
@@ -185,9 +183,7 @@ const QueryResult = ({
     >
       {error ? (
         <div>
-          {hasScriptError ? null : (
-            <div className="error" style={{ whiteSpace: 'pre-line' }}>{formatErrorMessage(error)}</div>
-          )}
+          <div className="error" style={{ whiteSpace: 'pre-line' }}>{formatErrorMessage(error)}</div>
 
           {error && typeof error === 'string' && error.toLowerCase().includes('self signed certificate') ? (
             <div className="mt-6 muted text-xs">

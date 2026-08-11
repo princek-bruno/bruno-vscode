@@ -6,6 +6,7 @@ import path, { normalizePath } from 'utils/common/path';
 // @ts-expect-error - isRequestTagsIncluded may not be exported in type definitions
 import { isRequestTagsIncluded } from '@usebruno/common';
 import type { AppCollection, AppItem, Environment, UID } from '@bruno-types';
+import { SCRIPT_ERROR_FIELDS } from '@bruno-types';
 
 const replaceTabsWithSpaces = (str: string | null | undefined, numSpaces = 2): string => {
   if (!str || !str.length || !isString(str)) {
@@ -1063,9 +1064,7 @@ export const hasRequestChanges = (item: AppItem | null | undefined): boolean => 
       'assertionResults',
       'preRequestTestResults',
       'postResponseTestResults',
-      'preRequestScriptErrorMessage',
-      'postResponseScriptErrorMessage',
-      'testScriptErrorMessage'
+      ...SCRIPT_ERROR_FIELDS
     ]);
 
     // Deep clone helper that excludes certain properties
@@ -1192,7 +1191,8 @@ export const getEnvironmentVariables = (collection: AppCollection | null | undef
     const environment = findEnvironmentInCollection(collection, collection.activeEnvironmentUid as UID);
     if (environment) {
       each(environment.variables, (variable) => {
-        if (variable.name && variable.value && variable.enabled) {
+        // Enabled is the only gate; a typed value can legitimately be 0, false or ''.
+        if (variable.name && variable.enabled) {
           variables[variable.name] = variable.value;
         }
       });

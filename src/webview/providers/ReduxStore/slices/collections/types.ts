@@ -1,7 +1,7 @@
 /**
  * Payload types for collection slice reducers
  */
-import type { UID, KeyValue, AuthMode, BrunoVariableDataType } from '@bruno-types';
+import type { UID, KeyValue, AuthMode, BrunoVariableDataType, ScriptErrorContext } from '@bruno-types';
 import type { AppCollection, AppItem, SecurityConfig } from '@bruno-types';
 
 export interface CollectionUidPayload {
@@ -557,7 +557,8 @@ export interface RunFolderEventPayload extends CollectionUidPayload {
   preRequestTestResults?: unknown[];
   postResponseTestResults?: unknown[];
   assertionResults?: unknown[];
-  errorMessage?: string;
+  errorMessage?: string | null;
+  errorContext?: ScriptErrorContext | null;
   runCompletionTime?: number;
   statusText?: string;
   [key: string]: unknown;

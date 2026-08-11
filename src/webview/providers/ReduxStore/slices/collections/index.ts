@@ -16,6 +16,13 @@ import {
   deleteItemInCollectionByPathname,
   getUniqueTagsFromItems
 } from 'utils/collections';
+import type { ScriptErrorPhase } from '@bruno-types';
+import {
+  SCRIPT_ERROR_PHASES,
+  SCRIPT_ERROR_FIELDS,
+  scriptErrorMessageField,
+  scriptErrorContextField
+} from '@bruno-types';
 import { getSubdirectoriesFromRoot } from 'utils/common/platform';
 import { uuid, generateUidBasedOnHash } from 'utils/common';
 import { splitOnFirst, parsePathParams } from 'utils/url';
@@ -169,6 +176,10 @@ const wsStatusCodes: Record<number, string> = {
   1011: 'INTERNAL_ERROR', 1012: 'SERVICE_RESTART', 1013: 'TRY_AGAIN_LATER',
   1014: 'BAD_GATEWAY', 1015: 'TLS_HANDSHAKE'
 };
+
+const SCRIPT_EXECUTION_PHASES: Record<string, ScriptErrorPhase> = Object.fromEntries(
+  SCRIPT_ERROR_PHASES.map(({ phase, scriptType }) => [`${scriptType}-script-execution`, phase])
+);
 
 const initialState: CollectionsState = {
   collections: [],
@@ -2174,6 +2185,7 @@ export const collectionsSlice = createSlice({
           const item = runnerResult.items.findLast((i: any) => i.uid === request.uid);
           if (item) {
             item.error = action.payload.error;
+            item.errorSource = action.payload.errorSource || null;
             item.responseReceived = action.payload.responseReceived;
             item.status = 'error';
           }
@@ -2187,24 +2199,12 @@ export const collectionsSlice = createSlice({
           }
         }
 
-        if (type === 'post-response-script-execution' && request) {
+        const scriptPhase = SCRIPT_EXECUTION_PHASES[type as string];
+        if (scriptPhase && request) {
           const item = runnerResult.items.findLast((i: any) => i.uid === request.uid);
           if (item) {
-            item.postResponseScriptErrorMessage = action.payload.errorMessage;
-          }
-        }
-
-        if (type === 'test-script-execution' && request) {
-          const item = runnerResult.items.findLast((i: any) => i.uid === request.uid);
-          if (item) {
-            item.testScriptErrorMessage = action.payload.errorMessage;
-          }
-        }
-
-        if (type === 'pre-request-script-execution' && request) {
-          const item = runnerResult.items.findLast((i: any) => i.uid === request.uid);
-          if (item) {
-            item.preRequestScriptErrorMessage = action.payload.errorMessage;
+            item[scriptErrorMessageField(scriptPhase)] = action.payload.errorMessage || null;
+            item[scriptErrorContextField(scriptPhase)] = action.payload.errorContext || null;
           }
         }
       }
@@ -2216,20 +2216,26 @@ export const collectionsSlice = createSlice({
       if (collection) {
         const item = findItemInCollection(collection, itemUid);
         if (item) {
+          const { type, requestSent } = action.payload as { type?: string; requestSent?: Record<string, unknown> };
+
+          // Script phases report after the request finished, so resetting the state here would
+          // restart the loading overlay.
+          const scriptPhase = SCRIPT_EXECUTION_PHASES[type as string];
+          if (scriptPhase) {
+            const { errorMessage, errorContext } = action.payload as { errorMessage?: string | null; errorContext?: unknown };
+            (item as any)[scriptErrorMessageField(scriptPhase)] = errorMessage || null;
+            (item as any)[scriptErrorContextField(scriptPhase)] = errorContext || null;
+            return;
+          }
+
           // WS/gRPC use their own event-driven reducers for state management
           // They should never show the loading overlay (requestState = 'sending')
           const isStreamingRequest = item.type === 'ws-request' || item.type === 'grpc-request';
           item.requestState = isStreamingRequest ? null : 'sending';
 
-          const { type, requestSent } = action.payload as { type?: string; requestSent?: Record<string, unknown> };
           if (type === 'request-sent' && requestSent) {
             item.requestSent = requestSent;
           }
-
-          (item as any).testResults = [];
-          (item as any).assertionResults = [];
-          (item as any).preRequestTestResults = [];
-          (item as any).postResponseTestResults = [];
         }
       }
     },
@@ -2619,6 +2625,15 @@ export const collectionsSlice = createSlice({
       if (collection) {
         const item = findItemInCollection(collection, itemUid);
         if (item) {
+          SCRIPT_ERROR_FIELDS.forEach((field) => {
+            (item as any)[field] = null;
+          });
+
+          (item as any).testResults = [];
+          (item as any).assertionResults = [];
+          (item as any).preRequestTestResults = [];
+          (item as any).postResponseTestResults = [];
+
           // WS/gRPC use their own event-driven reducers for state management
           // They should never show the loading overlay
           const isStreamingRequest = item.type === 'ws-request' || item.type === 'grpc-request';

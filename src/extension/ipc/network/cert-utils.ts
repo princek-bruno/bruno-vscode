@@ -14,9 +14,9 @@ interface Collection {
 
 interface Request {
   url?: string;
-  collectionVariables?: Record<string, string>;
-  folderVariables?: Record<string, string>;
-  requestVariables?: Record<string, string>;
+  collectionVariables?: Record<string, unknown>;
+  folderVariables?: Record<string, unknown>;
+  requestVariables?: Record<string, unknown>;
 }
 
 interface CACertificatesCount {
@@ -52,11 +52,11 @@ interface CertsAndProxyConfigParams {
   collectionUid: string;
   collection: Collection;
   request: Request;
-  envVars: Record<string, string>;
+  envVars: Record<string, unknown>;
   runtimeVariables: Record<string, string>;
   processEnvVars: Record<string, string>;
   collectionPath: string;
-  globalEnvironmentVariables: Record<string, string>;
+  globalEnvironmentVariables: Record<string, unknown>;
 }
 
 interface CertsAndProxyConfigResult {
