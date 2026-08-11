@@ -70,6 +70,11 @@ app.get('/htmlpage', (_req, res) => {
   res.send('<html><head><title>t</title></head><body><img src="logo.png"/>hello</body></html>');
 });
 
+app.get('/htmlpage-autofocus', (_req, res) => {
+  res.setHeader('Content-Type', 'text/html');
+  res.send('<html><head><title>t</title></head><body><input id="focustrap" autofocus /></body></html>');
+});
+
 app.post('/api/echo/json', (req, res) => {
   res.json(req.body);
 });
