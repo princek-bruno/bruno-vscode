@@ -8,7 +8,7 @@ interface HtmlPreviewProps {
   baseUrl: string;
 }
 
-// Physical key, as the VS Code keybinding is; `key` is layout dependent.
+// Match the physical key, like VS Code's keybinding. e.key would be layout-dependent.
 const SAVE_SHORTCUT_FORWARDER =
   `<script>document.addEventListener('keydown',function(e){` +
   `if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&!e.altKey&&e.code==='KeyS'){` +
