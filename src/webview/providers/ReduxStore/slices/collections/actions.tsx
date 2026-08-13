@@ -9,7 +9,7 @@ import get from 'lodash/get';
 import set from 'lodash/set';
 import trim from 'lodash/trim';
 import type { RootState, AppDispatch } from 'providers/ReduxStore/index';
-import type { AppCollection, AppItem } from '@bruno-types';
+import type { AppCollection, AppItem, RequestSent } from '@bruno-types';
 import { variableNameRegex } from 'utils/common/regex';
 
 /** Redux thunk action creator type */
@@ -118,13 +118,14 @@ const safeCloneCollection = (collection: any): any => {
   };
 
   try {
-    const { items, ...collectionWithoutItems } = collection;
+    // `timeline` is UI-only and unbounded; the extension host never reads it back.
+    const { items, timeline, ...collectionWithoutItems } = collection;
     const clonedBase = JSON.parse(JSON.stringify(collectionWithoutItems));
     clonedBase.items = cloneItems(items);
     return clonedBase;
   } catch {
     // Fallback: create a shallow copy and clone items separately
-    const cloned = { ...collection };
+    const { timeline, ...cloned } = collection;
     cloned.items = cloneItems(collection.items);
     return cloned;
   }
@@ -780,23 +781,12 @@ export const sendRequest = (item: AppItem, collectionUid: string): ThunkAction<P
     } else {
       sendNetworkRequest(itemCopy, collectionCopy, environment, collectionCopy.runtimeVariables)
         .then((response: Record<string, unknown>) => {
-          interface TimelineEntry {
-            timestamp: Date | number;
-            [key: string]: unknown;
-          }
-          const serializedResponse = {
-            ...response,
-            timeline: (response.timeline as TimelineEntry[] | undefined)?.map((entry) => ({
-              ...entry,
-              timestamp: entry.timestamp instanceof Date ? entry.timestamp.getTime() : entry.timestamp
-            }))
-          };
-
           dispatch(
             responseReceived({
               itemUid,
               collectionUid,
-              response: serializedResponse
+              response,
+              requestSent: response.requestSent as RequestSent | undefined
             })
           );
         })

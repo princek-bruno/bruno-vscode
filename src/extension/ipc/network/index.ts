@@ -24,6 +24,7 @@ import { Readable } from 'stream';
 import { registerWsEventHandlers } from './ws-event-handlers';
 import { registerGrpcEventHandlers } from './grpc-event-handlers';
 import { utils as brunoUtilsRaw } from '@usebruno/common';
+import type { NetworkLogEntry, RequestSent, ResponseTimeline } from '@bruno-types';
 import qs from 'qs';
 
 // Type assertion for @usebruno/common utils (no type definitions available)
@@ -189,9 +190,55 @@ interface RequestResult {
   rawBuffer?: Buffer;
   size: number;
   duration: number;
-  timeline?: Array<{ timestamp: number; event: string }>;
+  timeline?: ResponseTimeline;
+  requestSent?: RequestSent;
   error?: string;
 }
+
+/** Request bodies can be streams (multipart) or buffers, neither of which survives postMessage. */
+const serializeRequestData = (data: unknown, multipartFields?: unknown): unknown => {
+  if (data === null || data === undefined || typeof data === 'string') {
+    return data;
+  }
+  if (Buffer.isBuffer(data)) {
+    return data.toString();
+  }
+  if (typeof (data as { pipe?: unknown }).pipe === 'function') {
+    return multipartFields ?? '[multipart form data]';
+  }
+  try {
+    JSON.stringify(data);
+    return data;
+  } catch {
+    return '[Unserializable body]';
+  }
+};
+
+/** `false` is used to stop axios auto-setting Content-Type; no such header was actually sent. */
+const serializeSentHeaders = (headers: Record<string, unknown>): Record<string, string> => {
+  const sent: Record<string, string> = {};
+  Object.entries(headers || {}).forEach(([key, value]) => {
+    if (value === false || value === null || value === undefined) {
+      return;
+    }
+    sent[key] = String(value);
+  });
+  return sent;
+};
+
+const buildRequestSnapshot = (request: {
+  url?: string;
+  method?: string;
+  headers?: unknown;
+  data?: unknown;
+  _originalMultipartData?: unknown;
+}): RequestSent => ({
+  url: request.url,
+  method: (request.method || 'GET').toUpperCase(),
+  headers: serializeSentHeaders(request.headers as Record<string, unknown>),
+  data: serializeRequestData(request.data, request._originalMultipartData),
+  timestamp: Date.now()
+});
 
 interface RunFolderContext {
   running: boolean;
@@ -206,10 +253,11 @@ const executeRequest = async (
   options: RequestOptions = {}
 ): Promise<RequestResult> => {
   const startTime = Date.now();
-  const timeline: Array<{ timestamp: number; event: string }> = [];
+  const timeline: NetworkLogEntry[] = [];
+  let requestSent: RequestSent | undefined;
 
-  const addTimelineEvent = (event: string) => {
-    timeline.push({ timestamp: Date.now() - startTime, event });
+  const addTimelineEvent = (message: string, type: NetworkLogEntry['type'] = 'info') => {
+    timeline.push({ elapsedMs: Date.now() - startTime, type, message });
   };
 
   addTimelineEvent('Request started');
@@ -389,7 +437,9 @@ const executeRequest = async (
       }
     }
 
-    addTimelineEvent('Sending request');
+    requestSent = buildRequestSnapshot(preparedRequest);
+
+    addTimelineEvent(`${requestSent.method} ${requestSent.url}`, 'request');
     const axiosInstance = createAxiosInstance(axiosOptions);
 
     preparedRequest.signal = abortController.signal;
@@ -399,13 +449,13 @@ const executeRequest = async (
       response = await axiosInstance.request(preparedRequest);
     } catch (error) {
       if ((error as Error).name === 'AbortError' || (error as Error).name === 'CanceledError') {
-        addTimelineEvent('Request cancelled');
+        addTimelineEvent('Request cancelled', 'error');
         throw new Error('Request cancelled');
       }
       throw error;
     }
 
-    addTimelineEvent('Response received');
+    addTimelineEvent(`${response.status} ${response.statusText}`, 'response');
 
     const responseHeaders: Record<string, string> = {};
     Object.entries(response.headers).forEach(([key, value]) => {
@@ -444,7 +494,8 @@ const executeRequest = async (
       rawBuffer: rawBuffer,
       size: responseSize,
       duration: Date.now() - startTime,
-      timeline
+      timeline,
+      requestSent
     };
 
     return result;
@@ -452,7 +503,7 @@ const executeRequest = async (
     const axiosError = error as AxiosError;
     const duration = Date.now() - startTime;
 
-    addTimelineEvent('Request failed: ' + (error as Error).message);
+    addTimelineEvent('Request failed: ' + (error as Error).message, 'error');
 
     // If we have a response (4xx, 5xx), return it as a valid response
     // This matches bruno-electron behavior - error responses are shown as data, not as errors
@@ -495,7 +546,8 @@ const executeRequest = async (
         rawBuffer: errorRawBuffer,
         size: errorSize,
         duration,
-        timeline
+        timeline,
+        requestSent
       };
     }
 
@@ -503,7 +555,8 @@ const executeRequest = async (
     const errorMessage = (error as Error).message || 'Error occurred while executing the request!';
     return {
       status: 0,
-      statusText: errorMessage,
+      // Desktop reports the axios error code here and keeps the readable text in `error`.
+      statusText: axiosError.code || errorMessage,
       headers: {},
       data: null,
       dataBuffer: '',
@@ -511,6 +564,7 @@ const executeRequest = async (
       size: 0,
       duration,
       timeline,
+      requestSent,
       error: errorMessage
     };
   } finally {
@@ -1028,12 +1082,7 @@ const registerNetworkIpc = (): void => {
 
       sendToWebview('main:run-request-event', {
         type: 'request-sent',
-        requestSent: {
-          url: scriptRequest.url,
-          method: scriptRequest.method,
-          headers: scriptRequest.headers,
-          timestamp: Date.now()
-        },
+        requestSent: buildRequestSnapshot(scriptRequest),
         collectionUid,
         itemUid,
         requestUid,
@@ -1043,6 +1092,25 @@ const registerNetworkIpc = (): void => {
       // Use scriptRequest so pre-request script changes are respected
       // scriptRequest will be mutated by interpolateVars inside executeRequest
       const result = await executeRequest(scriptRequest as unknown as BrunoRequest, context);
+
+      const oauth2Credentials = (scriptRequest as { oauth2Credentials?: {
+        credentials?: unknown;
+        url?: string;
+        credentialsId?: string;
+        folderUid?: string;
+        debugInfo?: { data: unknown[] };
+      } }).oauth2Credentials;
+      if (oauth2Credentials?.debugInfo) {
+        sendToWebview('main:credentials-update', {
+          collectionUid,
+          itemUid,
+          folderUid: oauth2Credentials.folderUid ?? null,
+          url: oauth2Credentials.url,
+          credentialsId: oauth2Credentials.credentialsId,
+          credentials: oauth2Credentials.credentials,
+          debugInfo: oauth2Credentials.debugInfo
+        });
+      }
 
       sendToWebview('main:run-request-event', {
         type: 'response-received',
@@ -1073,6 +1141,7 @@ const registerNetworkIpc = (): void => {
           size: result.size,
           duration: result.duration,
           timeline: result.timeline,
+          requestSent: result.requestSent,
           error: result.error
         };
       }
@@ -1146,8 +1215,9 @@ const registerNetworkIpc = (): void => {
         size: result.size,
         duration: result.duration,
         timeline: result.timeline,
+        requestSent: result.requestSent,
         // Interpolated URL actually sent (executeRequest resolves {{vars}} in place). Used as the
-        // <base href> for HTML previews so relative assets resolve; requestSent.url is still raw.
+        // <base href> for HTML previews so relative assets resolve.
         requestUrl: scriptRequest.url,
         error: result.error
       };
@@ -1985,12 +2055,7 @@ const registerNetworkIpc = (): void => {
               .join('&');
           }
 
-          const requestSent = {
-            url: scriptRequest.url,
-            method: scriptRequest.method,
-            headers: scriptRequest.headers,
-            timestamp: Date.now()
-          };
+          const requestSent = buildRequestSnapshot(scriptRequest);
 
           sendToWebview('main:run-folder-event', {
             type: 'request-sent',
@@ -2080,6 +2145,7 @@ const registerNetworkIpc = (): void => {
 
           sendToWebview('main:run-folder-event', {
             type: 'response-received',
+            requestSent: result.requestSent,
             responseReceived: {
               status: result.status,
               statusText: result.statusText,

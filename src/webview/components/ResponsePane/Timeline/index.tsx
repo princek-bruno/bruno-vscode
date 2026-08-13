@@ -1,87 +1,34 @@
 import React from 'react';
 import StyledWrapper from './StyledWrapper';
-import { findItemInCollection, findParentItemInCollection } from 'utils/collections/index';
-import { get } from 'lodash';
 import TimelineItem from './TimelineItem/index';
 import GrpcTimelineItem from './GrpcTimelineItem/index';
-
-interface getEffectiveAuthSourceProps {
-  collection?: React.ReactNode;
-  item?: React.ReactNode;
-}
-
-const getEffectiveAuthSource = (collection: any, item: any) => {
-  const authMode = item.draft ? get(item, 'draft.request.auth.mode') : get(item, 'request.auth.mode');
-  if (authMode !== 'inherit') return null;
-
-  const collectionRoot = collection?.draft?.root || collection?.root || {};
-  const collectionAuth = get(collectionRoot, 'request.auth');
-  let effectiveSource = {
-    type: 'collection',
-    uid: collection.uid,
-    auth: collectionAuth
-  };
-
-  let path = [];
-  let currentItem = findItemInCollection(collection, item?.uid);
-  while (currentItem) {
-    path.unshift(currentItem);
-    currentItem = findParentItemInCollection(collection, currentItem?.uid);
-  }
-
-  for (let i of [...path].reverse()) {
-    if (i.type === 'folder') {
-      const folderAuth = get(i, 'root.request.auth');
-      if (folderAuth && folderAuth.mode && folderAuth.mode !== 'none' && folderAuth.mode !== 'inherit') {
-        effectiveSource = {
-          type: 'folder',
-          uid: i.uid,
-          auth: folderAuth
-        };
-        break;
-      }
-    }
-  }
-
-  return effectiveSource;
-};
+import { useItemTimeline } from '../timeline-utils';
 
 const Timeline = ({
   collection,
   item
 }: any) => {
-  const authSource = getEffectiveAuthSource(collection, item);
   const isGrpcRequest = item.type === 'grpc-request' || item.type === 'ws-request';
-
-  const combinedTimeline = ([...(collection?.timeline || [])]).filter((obj) => {
-    // Always show entries for this item
-    if (obj.itemUid === item.uid) return true;
-
-    // For OAuth2 entries, also show if auth is inherited
-    if (obj.type === 'oauth2' && authSource) {
-      if (authSource.type === 'folder' && obj.folderUid === authSource.uid) return true;
-      if (authSource.type === 'collection' && !obj.folderUid) return true;
-    }
-
-    return false;
-  }).sort((a, b) => b.timestamp - a.timestamp);
+  const combinedTimeline = useItemTimeline(collection, item);
 
   return (
     <StyledWrapper
       className="pb-4 w-full flex flex-grow flex-col"
     >
-      {/* Timeline container with scrollbar */}
       <div
         className="timeline-container"
+        data-testid="timeline-container"
       >
         {combinedTimeline.map((event, index) => {
+          // Newest-first: an index key would let a new row inherit the top row's expand state.
+          const key = event.id ?? `${event.type}-${event.itemUid}-${event.timestamp}-${event.eventType ?? ''}-${index}`;
           if (event.type === 'request') {
             const { data, timestamp, eventType } = event;
             const { request, response, eventData = {}, timestamp: eventTimestamp = timestamp } = data;
 
             if (isGrpcRequest) {
               return (
-                <div key={index} className="timeline-event">
+                <div key={key} className="timeline-event" data-testid="timeline-item">
                   <GrpcTimelineItem
                     timestamp={eventTimestamp}
                     request={request}
@@ -96,7 +43,7 @@ const Timeline = ({
             }
 
             return (
-              <div key={index} className="timeline-event">
+              <div key={key} className="timeline-event" data-testid="timeline-item">
                 <TimelineItem
                   timestamp={timestamp}
                   request={request}
@@ -110,7 +57,7 @@ const Timeline = ({
             const { data, timestamp } = event;
             const { debugInfo } = data;
             return (
-              <div key={index} className="timeline-event">
+              <div key={key} className="timeline-event" data-testid="timeline-item">
                 <div className="timeline-event-header cursor-pointer flex items-center">
                   <div className="flex items-center">
                     <span className="font-bold">OAuth2.0 Calls</span>

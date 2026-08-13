@@ -16,6 +16,12 @@ const StyledWrapper = styled.div`
     cursor: pointer;
   }
 
+  .timeline-item-chevron {
+    display: flex;
+    align-items: center;
+    color: ${(props) => props.theme.colors.text.muted};
+  }
+
   .timeline-item-header-content {
     display: flex;
     justify-content: space-between;

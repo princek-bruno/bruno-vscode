@@ -14,14 +14,12 @@ export interface HttpResponse {
   responseTime?: number;
 }
 
-export interface ResponseTimeline {
-  startTime?: number;
-  dnsTime?: number;
-  tcpTime?: number;
-  tlsTime?: number;
-  firstByteTime?: number;
-  downloadTime?: number;
-  endTime?: number;
+export type ResponseTimeline = NetworkLogEntry[];
+
+export interface NetworkLogEntry {
+  elapsedMs: number;
+  type: 'info' | 'request' | 'response' | 'error';
+  message: string;
 }
 
 export interface GrpcResponse {

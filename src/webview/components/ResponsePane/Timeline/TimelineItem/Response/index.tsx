@@ -37,8 +37,8 @@ const Response = ({
     <div>
       <div className="mb-1">
         <Status statusCode={status || statusCode} statusText={statusText} />
-        {response.duration && <span className="timeline-item-metadata">{response.duration}ms</span>}
-        {response.size && <span className="timeline-item-metadata">{response.size}B</span>}
+        {response?.duration ? <span className="timeline-item-metadata">{response.duration}ms</span> : null}
+        {response?.size ? <span className="timeline-item-metadata">{response.size}B</span> : null}
       </div>
 
       <Headers headers={headers} type="response" />

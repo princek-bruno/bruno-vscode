@@ -9,6 +9,8 @@ import {
 } from '../ipc/handlers';
 import { storeTransientItem }  from '../panels/transient-request-panel';
 import { WebviewHelper } from '../webview/helper';
+import { findCollectionRoot } from '../utils/path';
+import { setPendingNotLoadedRequest, ensureBrunoEditorIntent } from '../editors/bruno-editor-provider';
 
 interface IpcMessage {
   type: 'invoke' | 'send';
@@ -257,6 +259,26 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
   private async _handleIpcSend(channel: string, args: unknown[]): Promise<void> {
     switch (channel) {
       case 'sidebar:open-request':
+        if (typeof args[0] === 'string') {
+          const requestPath = vscode.Uri.file(args[0]).fsPath;
+          const basename = path.basename(requestPath);
+          if (basename === 'opencollection.yml' || basename === 'collection.bru') {
+            const rootOfFile = findCollectionRoot(requestPath);
+            const parentRoot = rootOfFile ? findCollectionRoot(rootOfFile) : null;
+            if (parentRoot) {
+              await ensureBrunoEditorIntent(requestPath, 'not-loaded');
+              setPendingNotLoadedRequest(requestPath, parentRoot);
+            }
+          }
+          await vscode.commands.executeCommand(
+            'vscode.openWith',
+            vscode.Uri.file(requestPath),
+            'bruno.requestEditor'
+          );
+        }
+        break;
+
+      case 'sidebar:open-app':
         if (typeof args[0] === 'string') {
           await vscode.commands.executeCommand(
             'vscode.openWith',

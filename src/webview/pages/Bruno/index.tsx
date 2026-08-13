@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import find from 'lodash/find';
 import { findItemInCollection, findCollectionByUid, getDefaultRequestPaneTab } from 'utils/collections';
 import { hasPlatformSupport } from 'utils/common/platform';
+import { PREVIEW_SAVE_HOTKEY_MESSAGE, PREVIEW_SAVE_MIN_INTERVAL_MS } from 'utils/common/constants';
 import StyledWrapper from './StyledWrapper';
 import useGrpcEventListeners from 'utils/network/grpc-event-listeners';
 import useWsEventListeners from 'utils/network/ws-event-listeners';
@@ -17,6 +18,7 @@ import {
 } from 'providers/ReduxStore/slices/collections/actions';
 
 export default function Main(): React.ReactElement {
+  const lastPreviewSaveRef = useRef(0);
   const mainSectionRef = useRef<HTMLDivElement>(null);
   const dispatch = useDispatch();
   const collections = useSelector((state: any) => state.collections.collections);
@@ -141,8 +143,7 @@ export default function Main(): React.ReactElement {
   useEffect(() => {
     if (!hasPlatformSupport()) return;
 
-    const { ipcRenderer } = window;
-    const removeTriggerSaveListener = ipcRenderer.on('main:trigger-save', () => {
+    const saveActiveTab = () => {
       const activeTab = find(tabs, (t: any) => t.uid === activeTabUid);
       if (!activeTab) return;
 
@@ -164,10 +165,30 @@ export default function Main(): React.ReactElement {
           dispatch(saveCollectionSettings(collection.uid));
         }
       }
-    });
+    };
+
+    const { ipcRenderer } = window;
+    const removeTriggerSaveListener = ipcRenderer.on('main:trigger-save', saveActiveTab);
+
+    const onPreviewHotkey = (event: MessageEvent) => {
+      const { type, action } = event.data || {};
+      if (type !== PREVIEW_SAVE_HOTKEY_MESSAGE.type || action !== PREVIEW_SAVE_HOTKEY_MESSAGE.action) return;
+
+      const previewFrames = document.querySelectorAll<HTMLIFrameElement>('iframe[data-html-preview]');
+      if (![...previewFrames].some((frame) => frame.contentWindow === event.source)) return;
+
+      // The previewed page is remote and can post this itself, so a run of them is collapsed.
+      const now = Date.now();
+      if (now - lastPreviewSaveRef.current < PREVIEW_SAVE_MIN_INTERVAL_MS) return;
+      lastPreviewSaveRef.current = now;
+
+      saveActiveTab();
+    };
+    window.addEventListener('message', onPreviewHotkey);
 
     return () => {
       removeTriggerSaveListener();
+      window.removeEventListener('message', onPreviewHotkey);
     };
   }, [tabs, activeTabUid, collections, dispatch]);
 
