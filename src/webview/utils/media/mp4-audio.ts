@@ -1,39 +1,27 @@
-/**
- * Minimal ISOBMFF reader: locates the audio track of an mp4 and returns its AAC access units, the
- * AudioSpecificConfig the decoder needs, and the edit-list trim that removes the encoder delay.
- */
-
 export interface Mp4AudioSample {
   offset: number;
   size: number;
 }
 
 export interface Mp4AudioTrack {
-  /** Sample entry format, e.g. `mp4a`. */
   format: string;
   sampleRate: number;
   channels: number;
-  /** AudioSpecificConfig bytes from the `esds` box, required to configure the decoder. */
+  /** AudioSpecificConfig, from the `esds` box. */
   config: Uint8Array | null;
   samples: Mp4AudioSample[];
-  /** Samples to drop from the decoded stream (edit-list `media_time`), i.e. the encoder delay. */
+  /** Encoder delay, from the edit-list `media_time`. */
   trimStart: number;
 }
 
-/** AAC-LC emits this many samples per access unit; SBR (HE-AAC) emits twice as many. */
+/** AAC-LC per access unit; SBR emits twice as many. */
 export const NOMINAL_FRAME_SAMPLES = 1024;
 
-/** The decoded track is held in memory in full, as one WAV blob, so its size is what has to be capped. */
 export const MAX_DECODED_BYTES = 64 * 1024 * 1024;
 
-/**
- * Whether `sampleCount` access units fit the budget. Sized at the smaller of the two frame sizes, so
- * an SBR stream that decodes to twice this is caught by the decoder rather than turned away here.
- */
 export const withinDecodeBudget = (sampleCount: number, channels: number): boolean =>
   sampleCount * NOMINAL_FRAME_SAMPLES * Math.max(channels, 1) * 2 <= MAX_DECODED_BYTES;
 
-/** True for tracks this decoder can handle: AAC in an mp4 sample entry, small enough to decode. */
 export const isDecodableAacTrack = (track: Mp4AudioTrack | null): boolean => {
   if (!track || track.format !== 'mp4a' || !track.config || !track.samples.length) return false;
   if (!track.sampleRate) return false;
@@ -57,7 +45,6 @@ export const parseMp4AudioTrack = (bytes: Uint8Array): Mp4AudioTrack | null => {
   try {
     return readAudioTrack(bytes);
   } catch {
-    // A truncated or malformed response leaves the preview without audio rather than failing to render.
     return null;
   }
 };
@@ -118,10 +105,7 @@ const readAudioTrack = (bytes: Uint8Array): Mp4AudioTrack | null => {
         track.timescale = bytes[start] === 1 ? u32(start + 20) : u32(start + 12);
         break;
       case 'elst': {
-        // media_time is the presentation start. A negative one marks an empty edit, which muxers
-        // write ahead of the real trim, so the first non-negative entry is the one that counts.
-        // An empty edit's segment_duration is a presentation delay, in the movie timescale rather
-        // than this one; it is not read, so a track delayed that way still plays that much early.
+        // A negative media_time marks an empty edit, written ahead of the real trim.
         const version = bytes[start];
         const entrySize = version === 1 ? 20 : 12;
         const entries = u32(start + 4);
@@ -140,9 +124,8 @@ const readAudioTrack = (bytes: Uint8Array): Mp4AudioTrack | null => {
       case 'stsd': {
         const entry = start + 8;
         track.format = type(entry + 4);
-        // AudioSampleEntry, from the start of the box: 8 byte header, 6 reserved and 2
-        // data_reference_index (the SampleEntry base), 8 reserved, 2 channelcount, 2 samplesize,
-        // 2 predefined, 2 reserved, 4 samplerate as 16.16 fixed point.
+        // AudioSampleEntry: 8 header, 6 reserved, 2 data_reference_index, 8 reserved, 2 channelcount,
+        // 2 samplesize, 2 predefined, 2 reserved, 4 samplerate as 16.16 fixed point.
         track.channels = u16(entry + 24);
         track.sampleRate = u32(entry + 32) >>> 16;
         walk(entry + 36, end, (childType, childStart, childEnd) => {
@@ -171,7 +154,6 @@ const readAudioTrack = (bytes: Uint8Array): Mp4AudioTrack | null => {
   const { stsz, stsc, stco, co64 } = audio.tables;
   if (!stsz || !stsc || !(stco || co64)) return null;
 
-  // A count the box is too short to hold would read off the end of the buffer.
   const entryCount = (table: { start: number; end: number }, countOffset: number, entryBytes: number): number => {
     const count = u32(table.start + countOffset);
     return table.start + countOffset + 4 + count * entryBytes <= table.end ? count : 0;
@@ -181,8 +163,6 @@ const readAudioTrack = (bytes: Uint8Array): Mp4AudioTrack | null => {
 
   const fixedSize = u32(stsz.start + 4);
   const sampleCount = fixedSize ? u32(stsz.start + 8) : entryCount(stsz, 8, 4);
-  // The samples themselves cannot outweigh the file, and a table too large to decode is not worth
-  // materialising: either way the count is a crafted or corrupt number, not a track.
   if (!sampleCount || sampleCount * Math.max(fixedSize, 1) > bytes.byteLength) return null;
   if (!withinDecodeBudget(sampleCount, audio.channels)) return null;
 
@@ -226,7 +206,7 @@ const readAudioTrack = (bytes: Uint8Array): Mp4AudioTrack | null => {
     }
   }
 
-  // media_time is in the track's media timescale, which is usually but not always the sample rate.
+  // media_time is in the media timescale, usually but not always the sample rate.
   const trimStart = audio.timescale
     ? Math.round((audio.trimStart * audio.sampleRate) / audio.timescale)
     : audio.trimStart;
@@ -241,7 +221,7 @@ const readAudioTrack = (bytes: Uint8Array): Mp4AudioTrack | null => {
   };
 };
 
-/** esds -> ES_Descriptor -> DecoderConfigDescriptor -> DecoderSpecificInfo (AudioSpecificConfig). */
+/** esds -> ES_Descriptor -> DecoderConfigDescriptor -> DecoderSpecificInfo. */
 const parseEsds = (bytes: Uint8Array, start: number, end: number): Uint8Array | null => {
   let offset = start + 4; // version + flags
 

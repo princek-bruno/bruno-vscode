@@ -36,7 +36,7 @@ const u64 = (value: number) => {
   return out;
 };
 
-/** Box with a 64-bit size: the 32-bit field holds 1 and the real size follows the type. */
+/** 64-bit size: the 32-bit field holds 1 and the real size follows the type. */
 const largeBox = (type: string, ...payload: Uint8Array[]) => {
   const body = concat(payload);
   return concat([u32(1), ascii(type), u64(body.length + 16), body]);
@@ -169,7 +169,6 @@ describe('parseMp4AudioTrack', () => {
     expect(track!.channels).toBe(2);
     expect(Array.from(track!.config!)).toEqual([0x12, 0x10]);
     expect(track!.trimStart).toBe(1024);
-    // both samples live in one chunk, so the second starts where the first ends
     expect(track!.samples).toEqual([
       { offset: 1000, size: 100 },
       { offset: 1100, size: 120 }
@@ -211,7 +210,6 @@ describe('parseMp4AudioTrack', () => {
 
   it('treats a missing or empty edit list as no trim', () => {
     expect(parseMp4AudioTrack(mp4(trak({ handler: 'soun' })))!.trimStart).toBe(0);
-    // media_time -1 marks an empty edit rather than a sample offset
     expect(parseMp4AudioTrack(mp4(trak({ handler: 'soun', mediaTime: -1 })))!.trimStart).toBe(0);
   });
 
@@ -230,7 +228,7 @@ describe('parseMp4AudioTrack', () => {
   });
 
   it('returns null for a table too large to decode, without building it', () => {
-    // Small enough to fit inside the file, but 17k stereo access units decode to ~70MB of PCM.
+    // 17k stereo access units decode to ~70MB of PCM.
     const padded = (sampleCount: number) =>
       concat([
         mp4(trak({ handler: 'soun', fixedSampleSize: 1, sampleCount })),
@@ -247,7 +245,7 @@ describe('parseMp4AudioTrack', () => {
   });
 
   it('returns null instead of throwing when a 64-bit box size is itself truncated', () => {
-    // A size of 1 promises a 64-bit length in the next 8 bytes; only 4 of them are here.
+    // A size of 1 promises 8 more length bytes; only 4 are here.
     expect(parseMp4AudioTrack(concat([u32(1), ascii('moov'), u32(0)]))).toBeNull();
   });
 
@@ -284,7 +282,7 @@ describe('parseMp4AudioTrack', () => {
   });
 
   it('converts the edit-list trim from the media timescale to samples', () => {
-    // media_time of 500 in a 1000-tick timescale is 0.5s, i.e. 22050 samples at 44.1kHz.
+    // 500 ticks of a 1000-tick timescale is 0.5s, i.e. 22050 samples at 44.1kHz.
     const track = parseMp4AudioTrack(mp4(trak({ handler: 'soun', timescale: 1000, mediaTime: 500 })));
     expect(track!.trimStart).toBe(22050);
   });
@@ -313,7 +311,6 @@ describe('isDecodableAacTrack', () => {
   });
 
   it('rejects a track whose decoded audio would not fit the memory budget', () => {
-    // 26k access units in stereo is ~106MB of 16-bit PCM.
     const samples = new Array(26_000).fill({ offset: 0, size: 100 });
     expect(isDecodableAacTrack(track({ samples }))).toBe(false);
   });

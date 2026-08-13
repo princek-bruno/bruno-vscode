@@ -1,8 +1,8 @@
 export interface PcmChunks {
-  /** Interleaved 16-bit PCM, in order. Emptied as it is written. */
+  /** Emptied as it is written. */
   chunks: Int16Array[];
   totalSamples: number;
-  /** Leading samples to drop, i.e. the encoder delay named by the mp4 edit list. */
+  /** Encoder delay, from the mp4 edit list. */
   trimSamples?: number;
   sampleRate: number;
   channels: number;
@@ -10,11 +10,7 @@ export interface PcmChunks {
 
 const EMPTY = new Int16Array(0);
 
-/**
- * Wraps PCM in a WAV container so it can be played by an `<audio>` element. Each chunk is dropped as
- * it is copied, since holding the chunks and the finished buffer at once is enough to exhaust the
- * webview's memory on a full-length track.
- */
+/** Chunks are dropped as they are copied; holding both copies exhausts webview memory on a long track. */
 export const wavBlobFromPcmChunks = ({
   chunks,
   totalSamples,

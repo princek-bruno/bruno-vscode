@@ -11,20 +11,12 @@ interface VideoPreviewProps {
   dataBuffer: string;
 }
 
-// VS Code hosts webviews in a cross-origin iframe without the `fullscreen` permission, so
-// requestFullscreen() is rejected and Chromium keeps its own control disabled. Where that is the
-// case the dead control is hidden and the player expands to fill the webview instead.
+// VS Code's webview iframe lacks the `fullscreen` permission, so Chromium disables its own control.
 const nativeFullscreenAvailable = typeof document !== 'undefined' && document.fullscreenEnabled;
 
-/** Matches Chromium's own idle delay before it fades the control row. */
 const CONTROLS_IDLE_MS = 2500;
 
-/**
- * Height of Chromium's controls: a 48px button row above a 24px scrubber strip. The player is sized
- * to the video's own aspect ratio plus this band, picture anchored to the top, so the controls sit
- * against the picture as they do in Bruno desktop rather than at the foot of a tall black box.
- */
-const CONTROLS_HEIGHT = 72;
+const CONTROLS_HEIGHT = 48 + 24;
 
 const PlayerFrame = styled.div<{ $hideFullscreenControl: boolean; $hideMuteControl: boolean }>`
   container-type: inline-size;
@@ -53,7 +45,6 @@ const VideoPreview: React.FC<VideoPreviewProps> = React.memo(({ contentType, dat
   const audioRef = useRef<HTMLAudioElement>(null);
   const playerRef = useRef<ReactPlayer>(null);
 
-  // A Buffer is already a Uint8Array; viewing it avoids a second copy of the whole response body.
   const mediaBytes = useMemo(() => {
     const decoded = Buffer.from(dataBuffer, 'base64');
     return new Uint8Array(decoded.buffer, decoded.byteOffset, decoded.byteLength);
@@ -96,8 +87,6 @@ const VideoPreview: React.FC<VideoPreviewProps> = React.memo(({ contentType, dat
     return () => video.removeEventListener('loadedmetadata', applyAspect);
   }, [video]);
 
-  // These controls sit in the native control row, so they follow it: Chromium keeps the row up while
-  // the video is paused and fades it once the pointer has been idle over a playing video.
   useEffect(() => {
     const box = playerBoxRef.current;
     if (!video || !box) return;
@@ -139,12 +128,8 @@ const VideoPreview: React.FC<VideoPreviewProps> = React.memo(({ contentType, dat
     failed: 'This audio track could not be decoded'
   }[audio.state];
 
-  // Bruno's buttons take the slots the hidden native ones vacate: one button width in from the right,
-  // two where the native fullscreen button still sits to the right of them.
   const controlsInset = nativeFullscreenAvailable ? 'right-24' : 'right-12';
 
-  // `failed` hides it too: nothing can play that track, so the native control would only be a second
-  // greyed-out button next to Bruno's, which explains itself on hover.
   const hideMuteControl = audio.state !== 'unavailable';
 
   return (

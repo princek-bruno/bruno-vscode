@@ -4,22 +4,15 @@ import { bindEvents } from 'utils/common/dom';
 
 export type DecodedAudioState = 'unavailable' | 'idle' | 'decoding' | 'enabled' | 'failed';
 
-/** Resync when the two elements drift further apart than this, in seconds. */
+/** Seconds. */
 const MAX_DRIFT = 0.12;
 
-// play() rejects when the host blocks playback (autoplay policy); the video keeps playing silently.
 const ignorePlaybackRejection = (): void => undefined;
 
 const audioDecodedBytes = (video: HTMLVideoElement): number =>
   (video as unknown as { webkitAudioDecodedByteCount?: number }).webkitAudioDecodedByteCount || 0;
 
-/**
- * Plays the audio track of a video whose codec the host cannot decode, keeping it in step with the
- * video element. See `vendor/fdk-aac/README.md`.
- *
- * Returns `unavailable` whenever there is nothing to do: no audio track, an unsupported codec, or a
- * host that decodes the track natively (in which case the element's own controls already work).
- */
+/** Plays the audio track of a video whose codec the host cannot decode. See `vendor/fdk-aac/README.md`. */
 export const useDecodedAudioTrack = (
   video: HTMLVideoElement | null,
   mediaBytes: Uint8Array | null,
@@ -44,7 +37,6 @@ export const useDecodedAudioTrack = (
     }
   }, [audioRef]);
 
-  /** Only ever undoes this hook's own muting: the element's own mute state belongs to the user. */
   const unmute = useCallback((element: HTMLVideoElement | null) => {
     if (!element || !mutedByUsRef.current) return;
 
@@ -52,7 +44,6 @@ export const useDecodedAudioTrack = (
     mutedByUsRef.current = false;
   }, []);
 
-  /** Gives the video element its audio back and invalidates any decode still in flight. */
   const reset = useCallback(
     (element: HTMLVideoElement | null) => {
       enableIdRef.current++;
@@ -70,9 +61,8 @@ export const useDecodedAudioTrack = (
 
     let cancelled = false;
 
-    // The element is the only reliable witness: canPlayType(), MediaSource.isTypeSupported() and
-    // AudioDecoder.isConfigSupported() all claim AAC support even where no decoder is present. It
-    // reads 0 until the host has actually decoded audio, so probe again once playback begins.
+    // canPlayType() and AudioDecoder.isConfigSupported() claim AAC support even with no decoder present.
+    // Only the decoded-byte counter tells the truth, and it reads 0 until the host has decoded something.
     const detect = () => {
       if (cancelled) return;
       if (audioDecodedBytes(video)) {
@@ -109,7 +99,6 @@ export const useDecodedAudioTrack = (
     if (!video || !audio || !mediaBytes || !trackRef.current) return;
 
     const enableId = ++enableIdRef.current;
-    // A disable(), a new response, or an unmount bumps the id; anything it started is then unwanted.
     const superseded = () => enableId !== enableIdRef.current;
 
     setState('decoding');
@@ -129,7 +118,6 @@ export const useDecodedAudioTrack = (
       audio.playbackRate = video.playbackRate;
       audio.volume = video.volume;
 
-      // Only one of the two elements may produce sound; this one is authoritative once enabled.
       video.muted = true;
       mutedByUsRef.current = true;
       if (!video.paused) await audio.play().catch(ignorePlaybackRejection);
@@ -164,7 +152,6 @@ export const useDecodedAudioTrack = (
     const onRateChange = () => {
       audio.playbackRate = video.playbackRate;
     };
-    // The video is muted while this audio is authoritative, so its volume control has to reach here.
     const onVolumeChange = () => {
       audio.volume = video.volume;
     };
