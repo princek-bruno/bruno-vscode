@@ -29,7 +29,7 @@ import { splitOnFirst, parsePathParams } from 'utils/url';
 import { parseQueryParams, getDataTypeFromValue } from '@usebruno/common/utils';
 // @ts-expect-error - @usebruno/common/utils may not export buildQueryString in types
 import { buildQueryString as stringifyQueryParams } from '@usebruno/common/utils';
-import type { AppCollection, AppItem, UID, KeyValue, DraftRequestBody, HttpRequestParam, ResponseState, AuthMode, OAuth2CredentialEntry } from '@bruno-types';
+import type { AppCollection, AppItem, UID, KeyValue, DraftRequestBody, HttpRequestParam, ResponseState, AuthMode, OAuth2CredentialEntry, TimelineEntry } from '@bruno-types';
 import type {
   CollectionUidPayload,
   ItemUidPayload,
@@ -189,6 +189,36 @@ const initialState: CollectionsState = {
 
 const getRequestFromItem = (item: AppItem) => {
   return item.draft?.request || item.request;
+};
+
+const pushTimelineEntry = (collection: AppCollection, entry: Omit<TimelineEntry, 'id' | 'collectionUid'>) => {
+  if (!collection.timeline) {
+    collection.timeline = [];
+  }
+  collection.timeline.push({ id: uuid(), collectionUid: collection.uid, ...entry });
+};
+
+const pushStreamingTimelineEntry = (
+  collection: AppCollection,
+  item: AppItem,
+  eventType: string,
+  response: unknown,
+  eventData: unknown
+) => {
+  const timestamp = Date.now();
+  pushTimelineEntry(collection, {
+    type: 'request',
+    eventType,
+    folderUid: null,
+    itemUid: item.uid,
+    timestamp,
+    data: {
+      request: item.requestSent || item.request,
+      response,
+      eventData,
+      timestamp
+    }
+  });
 };
 
 const ensureDraft = (item: AppItem) => {
@@ -1991,16 +2021,44 @@ export const collectionsSlice = createSlice({
     },
 
     responseReceived: (state, action: PayloadAction<ResponseReceivedPayload>) => {
-      const { collectionUid, itemUid, response } = action.payload;
+      const { collectionUid, itemUid, response, requestSent } = action.payload;
       const collection = findCollectionByUid(state.collections, collectionUid);
-      if (collection) {
-        const item = findItemInCollection(collection, itemUid);
-        if (item) {
-          item.response = response;
-          item.requestState = 'received';
-          item.loading = false;
-        }
+      if (!collection) {
+        return;
       }
+
+      const item = findItemInCollection(collection, itemUid);
+      if (!item) {
+        return;
+      }
+
+      item.response = response;
+      item.requestState = 'received';
+      item.loading = false;
+
+      if (requestSent) {
+        item.requestSent = requestSent;
+      }
+
+      // A cancelled request resolves with a null response, so there is nothing to record.
+      if (!response) {
+        return;
+      }
+
+      const timelineRequest = requestSent || item.requestSent || item.request;
+      const timestamp = (timelineRequest as { timestamp?: number } | null)?.timestamp || Date.now();
+
+      pushTimelineEntry(collection, {
+        type: 'request',
+        folderUid: null,
+        itemUid: item.uid,
+        timestamp,
+        data: {
+          request: timelineRequest,
+          response,
+          timestamp
+        }
+      });
     },
 
     responseCleared: (state, action: PayloadAction<ResponseClearedPayload>) => {
@@ -2084,10 +2142,8 @@ export const collectionsSlice = createSlice({
     clearRequestTimeline: (state, action: PayloadAction<ClearRequestTimelinePayload>) => {
       const { collectionUid, itemUid } = action.payload;
       const collection = findCollectionByUid(state.collections, collectionUid);
-      if (collection && itemUid) {
-        const item = findItemInCollection(collection, itemUid);
-        if (item) {
-        }
+      if (collection && itemUid && collection.timeline) {
+        collection.timeline = collection.timeline.filter((entry) => entry?.itemUid !== itemUid);
       }
     },
 
@@ -2150,6 +2206,10 @@ export const collectionsSlice = createSlice({
           if (item) {
             item.status = 'completed';
             item.responseReceived = action.payload.responseReceived;
+            // The request-sent event fires before interpolation; this one carries what was actually sent.
+            if (action.payload.requestSent) {
+              item.requestSent = action.payload.requestSent;
+            }
           }
         }
 
@@ -2312,6 +2372,8 @@ export const collectionsSlice = createSlice({
           timestamp: Date.now()
         } as any;
       }
+
+      pushStreamingTimelineEntry(collection, item, eventType, item.response, eventData);
     },
 
     grpcResponseReceived: (state, action: PayloadAction<GrpcResponseReceivedPayload>) => {
@@ -2390,6 +2452,8 @@ export const collectionsSlice = createSlice({
       }
 
       item.response = updatedResponse;
+
+      pushStreamingTimelineEntry(collection, item, eventType, updatedResponse, eventData);
     },
 
     runWsRequestEvent: (state, action: PayloadAction<RunGrpcRequestEventPayload>) => {
@@ -2420,6 +2484,8 @@ export const collectionsSlice = createSlice({
           trailers: []
         } as any;
       }
+
+      pushStreamingTimelineEntry(collection, item, eventType, item.response, eventData);
     },
 
     wsResponseReceived: (state, action: PayloadAction<WsResponseReceivedPayload>) => {
@@ -2543,6 +2609,20 @@ export const collectionsSlice = createSlice({
       // Add the new credential
       filtered.push({ collectionUid, folderUid: folderUid || null, itemUid: itemUid || null, url, credentials, credentialsId, debugInfo });
       collection.oauth2Credentials = filtered;
+
+      if (!debugInfo?.data?.length) {
+        return;
+      }
+
+      pushTimelineEntry(collection, {
+        type: 'oauth2',
+        folderUid: folderUid || null,
+        itemUid: itemUid || '',
+        timestamp: Date.now(),
+        data: {
+          debugInfo: debugInfo.data
+        }
+      });
     },
 
     collectionClearOauth2CredentialsByUrl: (state, action: PayloadAction<CollectionClearOauth2CredentialsByUrlPayload>) => {

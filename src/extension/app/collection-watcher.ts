@@ -103,6 +103,23 @@ export const isCollectionRootFile = (pathname: string, collectionPath: string): 
   return basename === 'collection.bru' || basename === 'opencollection.yml';
 };
 
+const isNestedCollectionRootFile = (pathname: string, collectionPath: string): boolean => {
+  const basename = path.basename(pathname);
+  if (basename !== 'collection.bru' && basename !== 'opencollection.yml') {
+    return false;
+  }
+  return path.normalize(path.dirname(pathname)) !== path.normalize(collectionPath);
+};
+
+const markAsNestedCollectionFile = (file: FileData, pathname: string, size: number): void => {
+  file.data = { name: path.basename(pathname), type: 'http-request' };
+  file.error = { message: 'This is a nested collection, not a request.' };
+  file.partial = true;
+  file.loading = false;
+  file.size = sizeInMB(size);
+  hydrateRequestWithUuid(file.data, pathname);
+};
+
 interface EnvironmentVariable {
   name: string;
   value: string | number | boolean | Record<string, unknown> | null;
@@ -633,6 +650,14 @@ class CollectionWatcher {
         return;
       }
 
+      if (isNestedCollectionRootFile(pathname, collectionPath)) {
+        markAsNestedCollectionFile(file, pathname, fileStats?.size);
+        if (sender) {
+          sender('main:collection-tree-updated', 'addFile', file);
+        }
+        return;
+      }
+
       const format = getCollectionFormat(collectionPath);
 
       file.data = await parseRequest(content, { format });
@@ -1158,6 +1183,11 @@ class CollectionWatcher {
         return null;
       }
 
+      if (isNestedCollectionRootFile(pathname, collectionPath)) {
+        markAsNestedCollectionFile(file, pathname, fileStats?.size);
+        return file;
+      }
+
       const format = getCollectionFormat(collectionPath);
       const metaData = parseFileMeta(content, format);
       if (!metaData) {
@@ -1207,6 +1237,14 @@ class CollectionWatcher {
       if (!content.trim()) {
         console.log('[Watcher] Skipping empty file:', pathname);
         this.markFileAsProcessed(collectionUid, pathname);
+        return;
+      }
+
+      if (isNestedCollectionRootFile(pathname, collectionPath)) {
+        markAsNestedCollectionFile(file, pathname, fileStats?.size);
+        if (messageSender) {
+          messageSender('main:collection-tree-updated', 'addFile', file);
+        }
         return;
       }
 

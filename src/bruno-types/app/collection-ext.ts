@@ -6,8 +6,9 @@ import type { ResponseState, TestResult, AssertionResult } from './response';
 export interface RequestSent {
   url?: string;
   method?: string;
-  headers?: KeyValue[];
+  headers?: KeyValue[] | Record<string, string>;
   body?: unknown;
+  data?: unknown;
   timestamp?: number;
   [key: string]: unknown;
 }
@@ -23,7 +24,8 @@ export interface OAuth2CredentialEntry {
 }
 
 export interface TimelineEntry {
-  type: 'request' | 'response' | 'error';
+  id?: string;
+  type: 'request' | 'response' | 'error' | 'oauth2';
   eventType?: string;
   collectionUid: UID;
   folderUid: UID | null;
@@ -33,6 +35,7 @@ export interface TimelineEntry {
     request?: unknown;
     response?: unknown;
     eventData?: unknown;
+    debugInfo?: unknown[];
     timestamp?: number;
   };
 }
