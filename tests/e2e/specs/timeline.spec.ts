@@ -72,7 +72,7 @@ test.describe('Response timeline', () => {
     const entries = editor.locator('[data-testid="timeline-item"]');
     const url = editor.locator('[data-testid="timeline-url"]').first();
     const header = editor.locator('[data-testid="timeline-item-header"]').first();
-    const detail = editor.locator('[data-testid="timeline-item-detail"]').first();
+    const detail = editor.locator('[data-testid="timeline-detail"]').first();
 
     await expect(entries).toHaveCount(1, { timeout: 10_000 });
     await expect(url).toHaveText(`${TEST_SERVER}/ping`, { timeout: 10_000 });

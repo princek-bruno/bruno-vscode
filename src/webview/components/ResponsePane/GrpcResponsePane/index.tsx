@@ -15,7 +15,7 @@ import GrpcQueryResult from './GrpcQueryResult';
 import ResponseLayoutToggle from '../ResponseLayoutToggle';
 import Timeline from '../Timeline';
 import ClearTimeline from '../ClearTimeline';
-import { useItemTimeline } from '../timeline-utils';
+import { useTimelineEntries } from '../timeline-utils';
 import Tab from 'components/Tab';
 
 interface GrpcResponsePaneProps {
@@ -33,7 +33,7 @@ const GrpcResponsePane = ({
   const activeTabUid = useSelector((state) => state.tabs.activeTabUid);
   const isLoading = ['queued', 'sending'].includes(item.requestState);
 
-  const requestTimeline = useItemTimeline(collection, item);
+  const requestTimeline = useTimelineEntries(collection, item);
 
   const selectTab = (tab: any) => {
     dispatch(
