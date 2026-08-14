@@ -81,13 +81,15 @@ export interface DotenvVariable {
 }
 
 /**
- * Serializes variables to .env file content. Mirrors @usebruno/common's implementation;
- * reimplemented here because the rsbuild alias redirects @usebruno/common/utils to this shim.
+ * Serializes variables to .env file content. Copied from @usebruno/common because the
+ * rsbuild alias points @usebruno/common/utils at this shim, so its version is unreachable
+ * here. The two must stay byte-identical or the extension and the webview disagree on
+ * what a saved file should look like.
  *
- * Quoting follows what the dotenv parser does with each quote style:
- * - unquoted preserves \, " and ' but treats # as a comment and trims whitespace
- * - single and backtick quotes are fully literal
- * - double quotes expand \n and \r only
+ * A value is quoted based on how the dotenv parser reads each quote style back:
+ * - unquoted keeps \, " and ', but ends the value at a # and drops surrounding spaces
+ * - single and backtick quotes are taken literally
+ * - double quotes are literal except for \n and \r, which expand
  */
 export const jsonToDotenv = (variables: DotenvVariable[]): string => {
   if (!Array.isArray(variables)) {
