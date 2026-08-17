@@ -1,10 +1,19 @@
 import * as fs from 'fs';
+import * as net from 'net';
 import * as path from 'path';
 import type { Frame } from '@playwright/test';
 import { test, expect } from '../utils/fixtures';
 import { openBrunoSidebar, createCollection, openRequest, sendRequest, findCollectionDir } from '../utils/page/actions';
 
 const TEST_SERVER = 'http://127.0.0.1:8081';
+
+// A parallel change renames these hooks; match either name.
+const DETAIL = '[data-testid="timeline-item-detail"], [data-testid="timeline-detail"]';
+const NETWORK_PANEL = '[data-testid="timeline-panel-network"], .timeline-item-tab-content';
+
+async function openNetworkTab(editor: Frame): Promise<void> {
+  await editor.locator('button').filter({ hasText: /^Network/ }).first().click();
+}
 
 // The Timeline tab sits inline or in the overflow menu depending on pane width, and is briefly in
 // neither while the pane re-measures. Each step is bounded so a stale attempt can't eat the retries.
@@ -46,6 +55,22 @@ async function writeRequest(collectionDir: string, name: string, url: string): P
   ].join('\n'), 'utf8');
 }
 
+// VS Code's proxy agent exempts `localhost` and `127.0.0.1`, so only another spelling exercises the
+// substituted path. Not every runner has IPv6.
+function ipv6LoopbackReachable(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host: '::1', port });
+    const settle = (reachable: boolean) => {
+      socket.destroy();
+      resolve(reachable);
+    };
+    socket.setTimeout(2_000);
+    socket.once('connect', () => settle(true));
+    socket.once('timeout', () => settle(false));
+    socket.once('error', () => settle(false));
+  });
+}
+
 async function setupCollection(page: any, name: string, tmpDir: string): Promise<{ sidebar: Frame; collectionDir: string }> {
   const sidebar = await openBrunoSidebar(page);
   await createCollection(page, sidebar, name, tmpDir, 'bru');
@@ -72,7 +97,7 @@ test.describe('Response timeline', () => {
     const entries = editor.locator('[data-testid="timeline-item"]');
     const url = editor.locator('[data-testid="timeline-url"]').first();
     const header = editor.locator('[data-testid="timeline-item-header"]').first();
-    const detail = editor.locator('[data-testid="timeline-item-detail"]').first();
+    const detail = editor.locator(DETAIL).first();
 
     await expect(entries).toHaveCount(1, { timeout: 10_000 });
     await expect(url).toHaveText(`${TEST_SERVER}/ping`, { timeout: 10_000 });
@@ -86,6 +111,68 @@ test.describe('Response timeline', () => {
 
     await editor.getByTitle('Clear Timeline').click();
     await expect(entries).toHaveCount(0, { timeout: 10_000 });
+  });
+
+  test('network logs carry the same detail as the desktop app', async ({ page, tmpDir }) => {
+    const collectionName = 'Timeline Network Logs';
+    const { sidebar, collectionDir } = await setupCollection(page, collectionName, tmpDir);
+
+    await writeRequest(collectionDir, 'Ping', `${TEST_SERVER}/ping`);
+
+    const editor = await openRequest(page, sidebar, collectionName, 'Ping');
+    await sendRequest(editor, 200);
+    await openTimelineTab(editor);
+
+    await editor.locator('[data-testid="timeline-item-header"]').first().click();
+    await openNetworkTab(editor);
+
+    const logs = editor.locator(NETWORK_PANEL).first();
+    await expect(logs).toContainText(`Preparing request to ${TEST_SERVER}/ping`);
+    await expect(logs).toContainText('User-Agent: bruno-runtime');
+    await expect(logs).toContainText(/Trying 127\.0\.0\.1:8081/);
+    await expect(logs).toContainText(/Connected to 127\.0\.0\.1/);
+    await expect(logs).toContainText('HTTP/1.1 200 OK');
+    await expect(logs).toContainText('content-type: text/html');
+    await expect(logs).toContainText(/Request completed in \d+ ms/);
+  });
+
+  test('network logs report the connection for a host VS Code proxies', async ({ page, tmpDir }) => {
+    test.skip(!(await ipv6LoopbackReachable(8081)), 'IPv6 loopback unavailable');
+
+    const collectionName = 'Timeline Non Localhost';
+    const { sidebar, collectionDir } = await setupCollection(page, collectionName, tmpDir);
+
+    await writeRequest(collectionDir, 'Ping', 'http://[::1]:8081/ping');
+
+    const editor = await openRequest(page, sidebar, collectionName, 'Ping');
+    await sendRequest(editor, 200);
+    await openTimelineTab(editor);
+
+    await editor.locator('[data-testid="timeline-item-header"]').first().click();
+    await openNetworkTab(editor);
+
+    const logs = editor.locator(NETWORK_PANEL).first();
+    await expect(logs).toContainText(/Trying ::1:8081/);
+    await expect(logs).toContainText(/Connected to ::1/);
+  });
+
+  test('network logs show the body of an error response as text', async ({ page, tmpDir }) => {
+    const collectionName = 'Timeline Error Body';
+    const { sidebar, collectionDir } = await setupCollection(page, collectionName, tmpDir);
+
+    await writeRequest(collectionDir, 'Missing', `${TEST_SERVER}/no-such-route`);
+
+    const editor = await openRequest(page, sidebar, collectionName, 'Missing');
+    await sendRequest(editor, 404);
+    await openTimelineTab(editor);
+
+    await editor.locator('[data-testid="timeline-item-header"]').first().click();
+    await openNetworkTab(editor);
+
+    const logs = editor.locator(NETWORK_PANEL).first();
+    await expect(logs).toContainText('HTTP/1.1 404 Not Found');
+    // A base64 blob here would mean the body was logged encoded.
+    await expect(logs).toContainText('Cannot GET /no-such-route');
   });
 
   test('clearing the response keeps the timeline', async ({ page, tmpDir }) => {

@@ -16,10 +16,20 @@ export interface HttpResponse {
 
 export type ResponseTimeline = NetworkLogEntry[];
 
+/** One line of the network log. Written as a `Date`; the webview sees the serialized form. */
 export interface NetworkLogEntry {
-  elapsedMs: number;
-  type: 'info' | 'request' | 'response' | 'error';
-  message: string;
+  timestamp: Date | string;
+  type:
+    | 'separator'
+    | 'info'
+    | 'request'
+    | 'requestData'
+    | 'requestHeader'
+    | 'response'
+    | 'responseHeader'
+    | 'error'
+    | 'tls';
+  message?: string;
 }
 
 export interface GrpcResponse {

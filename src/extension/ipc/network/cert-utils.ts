@@ -19,7 +19,7 @@ interface Request {
   requestVariables?: Record<string, string>;
 }
 
-interface CACertificatesCount {
+export interface CACertificatesCount {
   system: number;
   root: number;
   custom: number;

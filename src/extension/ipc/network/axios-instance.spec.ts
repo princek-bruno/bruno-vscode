@@ -1,0 +1,343 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { AxiosAdapter, AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
+import http from 'http';
+import type { Readable } from 'stream';
+import type { NetworkLogEntry } from '@bruno-types';
+import { createAxiosInstance } from './axios-instance';
+import { setExtensionContext as setPreferencesContext } from '../../store/preferences';
+import { addCookieToJar, cookieJar } from '../../utils/cookies';
+
+interface StubResponse {
+  status?: number;
+  statusText?: string;
+  headers?: Record<string, string>;
+  data?: unknown;
+  httpVersion?: string;
+}
+
+/** Stands in for the http adapter, including its non-2xx rejection. */
+const createStubAdapter = (responses: StubResponse[]): AxiosAdapter => {
+  let call = 0;
+  return (config: InternalAxiosRequestConfig) => {
+    const stub = responses[Math.min(call++, responses.length - 1)];
+    const request = { res: { httpVersion: stub.httpVersion || '1.1' } };
+    const response = {
+      data: stub.data ?? '',
+      status: stub.status ?? 200,
+      statusText: stub.statusText ?? 'OK',
+      headers: stub.headers ?? {},
+      config,
+      request
+    } as unknown as AxiosResponse;
+
+    if (response.status >= 200 && response.status < 300) {
+      return Promise.resolve(response);
+    }
+    return Promise.reject(
+      new AxiosError(`Request failed with status code ${response.status}`, 'ERR_BAD_REQUEST', config, request, response)
+    );
+  };
+};
+
+const messagesOfType = (timeline: NetworkLogEntry[], type: NetworkLogEntry['type']): string[] =>
+  timeline.filter((entry) => entry.type === type).map((entry) => entry.message as string);
+
+const typesOf = (timeline: NetworkLogEntry[]): string[] => timeline.map((entry) => entry.type);
+
+describe('axios-instance network log', () => {
+  it('logs the request, its headers and the response like the desktop app', async () => {
+    const timeline: NetworkLogEntry[] = [];
+    const instance = createAxiosInstance({ timeline });
+
+    await instance.request({
+      url: 'https://api.example.com/breeds',
+      method: 'get',
+      adapter: createStubAdapter([{ headers: { 'content-type': 'application/json' } }])
+    });
+
+    expect(typesOf(timeline)).toEqual([
+      'separator',
+      'info',
+      'info',
+      'request',
+      'requestHeader',
+      'requestHeader',
+      'info',
+      'response',
+      'responseHeader',
+      'info'
+    ]);
+    expect(messagesOfType(timeline, 'request')).toEqual(['GET https://api.example.com/breeds']);
+    expect(messagesOfType(timeline, 'requestHeader')).toEqual([
+      expect.stringMatching(/^Accept: application\/json/),
+      'User-Agent: bruno-runtime/1.0'
+    ]);
+    expect(messagesOfType(timeline, 'response')).toEqual(['HTTP/1.1 200 OK']);
+    expect(messagesOfType(timeline, 'responseHeader')).toEqual(['content-type: application/json']);
+
+    const infoMessages = messagesOfType(timeline, 'info');
+    expect(infoMessages[0]).toBe('Preparing request to https://api.example.com/breeds');
+    expect(infoMessages[1]).toMatch(/^Current time is \d{4}-\d{2}-\d{2}T/);
+    expect(infoMessages[2]).toBe('Proxy mode: off');
+    expect(infoMessages[3]).toMatch(/^Request completed in \d+ ms$/);
+  });
+
+  it('logs the request body and skips headers axios will not send', async () => {
+    const timeline: NetworkLogEntry[] = [];
+    const instance = createAxiosInstance({ timeline });
+
+    await instance.request({
+      url: 'https://api.example.com/cats',
+      method: 'post',
+      data: '{"name":"tom"}',
+      headers: { 'content-type': 'application/json', 'x-dropped': false as unknown as string },
+      adapter: createStubAdapter([{ status: 201, statusText: 'Created' }])
+    });
+
+    expect(messagesOfType(timeline, 'requestData')).toEqual(['{"name":"tom"}']);
+    expect(messagesOfType(timeline, 'requestHeader')).not.toContainEqual(expect.stringContaining('x-dropped'));
+    expect(messagesOfType(timeline, 'response')).toEqual(['HTTP/1.1 201 Created']);
+  });
+
+  it('redacts a file body instead of logging the whole file', async () => {
+    const timeline: NetworkLogEntry[] = [];
+    const instance = createAxiosInstance({ timeline });
+
+    await instance.request({
+      url: 'https://api.example.com/upload',
+      method: 'post',
+      data: Buffer.from('binary-file-contents'),
+      adapter: createStubAdapter([{}])
+    });
+
+    expect(messagesOfType(timeline, 'requestData')).toEqual(['<request body redacted>']);
+  });
+
+  it('names the proxy when one is configured', async () => {
+    const timeline: NetworkLogEntry[] = [];
+    const instance = createAxiosInstance({
+      timeline,
+      proxyMode: 'on',
+      proxyConfig: { protocol: 'http', hostname: 'proxy.local', port: 8080 }
+    });
+
+    await instance.request({ url: 'https://api.example.com/breeds', method: 'get', adapter: createStubAdapter([{}]) });
+
+    expect(messagesOfType(timeline, 'info')).toContain('Proxy mode: on | http://proxy.local:8080');
+  });
+
+  it('reports HTTP/2 multiplexing', async () => {
+    const timeline: NetworkLogEntry[] = [];
+    const instance = createAxiosInstance({ timeline });
+
+    await instance.request({
+      url: 'https://api.example.com/breeds',
+      method: 'get',
+      adapter: createStubAdapter([{ httpVersion: '2.0' }])
+    });
+
+    expect(messagesOfType(timeline, 'info')).toContain('Using HTTP/2, server supports multiplexing');
+    expect(messagesOfType(timeline, 'response')).toEqual(['HTTP/2.0 200 OK']);
+  });
+
+  it('logs the status line and headers of an error response', async () => {
+    const timeline: NetworkLogEntry[] = [];
+    const instance = createAxiosInstance({ timeline });
+
+    await expect(instance.request({
+      url: 'https://api.example.com/missing',
+      method: 'get',
+      adapter: createStubAdapter([{ status: 404, statusText: 'Not Found', headers: { 'content-length': '9' } }])
+    })).rejects.toThrow();
+
+    expect(messagesOfType(timeline, 'error')).toEqual(['there was an error executing the request!']);
+    expect(messagesOfType(timeline, 'response')).toEqual(['HTTP/1.1 404 Not Found']);
+    expect(messagesOfType(timeline, 'responseHeader')).toEqual(['content-length: 9']);
+  });
+
+  it('logs the cause of a request that never got a response', async () => {
+    const timeline: NetworkLogEntry[] = [];
+    const instance = createAxiosInstance({ timeline });
+
+    await expect(instance.request({
+      url: 'https://api.example.com/breeds',
+      method: 'get',
+      adapter: () => Promise.reject(Object.assign(new AxiosError('connect ECONNREFUSED', 'ECONNREFUSED'), {
+        cause: new Error('connect ECONNREFUSED 127.0.0.1:443')
+      }))
+    })).rejects.toThrow();
+
+    const errors = messagesOfType(timeline, 'error');
+    expect(errors[0]).toBe('there was an error executing the request!');
+    expect(errors[1]).toContain('connect ECONNREFUSED');
+    expect(messagesOfType(timeline, 'response')).toEqual([]);
+  });
+
+  it('logs every hop of a redirect chain', async () => {
+    const timeline: NetworkLogEntry[] = [];
+    const instance = createAxiosInstance({ timeline });
+
+    await instance.request({
+      url: 'https://api.example.com/old',
+      method: 'post',
+      data: '{"name":"tom"}',
+      adapter: createStubAdapter([
+        { status: 301, statusText: 'Moved Permanently', headers: { location: '/new' } },
+        { status: 200 }
+      ])
+    });
+
+    expect(typesOf(timeline).filter((type) => type === 'separator')).toHaveLength(2);
+    expect(messagesOfType(timeline, 'request')).toEqual([
+      'POST https://api.example.com/old',
+      'GET https://api.example.com/new'
+    ]);
+    expect(messagesOfType(timeline, 'response')).toEqual(['HTTP/1.1 301 Moved Permanently', 'HTTP/1.1 200 OK']);
+    expect(messagesOfType(timeline, 'info')).toContain('Resolving relative redirect URL: /new → https://api.example.com/new');
+    expect(messagesOfType(timeline, 'info')).toContain(
+      'Changed method from POST to GET for 301 redirect and removed request body'
+    );
+  });
+
+  it('does not log when no timeline is passed', async () => {
+    const instance = createAxiosInstance();
+
+    const response = await instance.request({
+      url: 'https://api.example.com/breeds',
+      method: 'get',
+      adapter: createStubAdapter([{}])
+    });
+
+    expect(response.status).toBe(200);
+  });
+});
+
+describe('axios-instance cookies', () => {
+  const setSendCookiesPreference = (sendCookies: boolean) => {
+    const state: Record<string, unknown> = { preferences: { request: { sendCookies } } };
+    setPreferencesContext({
+      globalState: {
+        get: <T>(key: string, defaultValue?: T) => (key in state ? (state[key] as T) : defaultValue),
+        update: (key: string, value: unknown) => {
+          state[key] = value;
+          return Promise.resolve();
+        }
+      }
+    } as never);
+  };
+
+  const followRedirectWithCookie = async () => {
+    cookieJar.removeAllCookies();
+    addCookieToJar('session=abc; Path=/', 'http://api.example.com/old');
+
+    const configs: InternalAxiosRequestConfig[] = [];
+    const stub = createStubAdapter([
+      { status: 301, statusText: 'Moved Permanently', headers: { location: '/new' } },
+      { status: 200 }
+    ]);
+
+    await createAxiosInstance({}).request({
+      url: 'http://api.example.com/old',
+      method: 'get',
+      adapter: (config: InternalAxiosRequestConfig) => {
+        configs.push(config);
+        return stub(config);
+      }
+    });
+    return configs;
+  };
+
+  it('sends stored cookies on a redirect hop', async () => {
+    setSendCookiesPreference(true);
+
+    const configs = await followRedirectWithCookie();
+
+    expect(configs[1].headers['cookie']).toBe('session=abc');
+  });
+
+  it('sends no cookies when the preference is off', async () => {
+    setSendCookiesPreference(false);
+
+    const configs = await followRedirectWithCookie();
+
+    expect(configs[1].headers['cookie']).toBeUndefined();
+  });
+});
+
+describe('axios-instance connection log', () => {
+  let server: http.Server;
+  let baseUrl: string;
+
+  beforeAll(async () => {
+    server = http.createServer((req, res) => {
+      if (req.url === '/never-responds') {
+        return;
+      }
+      if (req.url === '/digest') {
+        if (!req.headers.authorization) {
+          res.writeHead(401, { 'www-authenticate': 'Digest realm="test", nonce="abc", qop="auth"' });
+          res.end();
+          return;
+        }
+        res.writeHead(200, { 'content-type': 'text/plain' });
+        res.end('authorized');
+        return;
+      }
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      res.end('pong');
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    baseUrl = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  });
+
+  afterAll(() => {
+    server.close();
+    server.closeAllConnections?.();
+  });
+
+  it('still honours the request timeout while logging the connection', async () => {
+    const timeline: NetworkLogEntry[] = [];
+    const instance = createAxiosInstance({ timeline, timeout: 250 });
+
+    const error = await instance.request({ url: `${baseUrl}/never-responds`, method: 'get' })
+      .then(() => null, (err: AxiosError) => err);
+
+    expect(error?.code).toBe(AxiosError.ECONNABORTED);
+    expect(error?.message).toBe('timeout of 250ms exceeded');
+  });
+
+  it('still answers a digest challenge after the log interceptors run', async () => {
+    const timeline: NetworkLogEntry[] = [];
+    const instance = createAxiosInstance({
+      timeline,
+      digestConfig: { username: 'user', password: 'pass' }
+    });
+
+    const response = await instance.request({ url: `${baseUrl}/digest`, method: 'get' });
+    (response.data as Readable).resume();
+
+    expect(response.status).toBe(200);
+    // The challenge is logged as its own hop, then the retry carries the credentials.
+    expect(messagesOfType(timeline, 'response')).toEqual(['HTTP/1.1 401 Unauthorized', 'HTTP/1.1 200 OK']);
+    expect(messagesOfType(timeline, 'requestHeader').filter((header) => header.startsWith('Authorization: Digest'))).toHaveLength(1);
+  });
+
+  it('logs the connection the request was sent over', async () => {
+    const timeline: NetworkLogEntry[] = [];
+    const instance = createAxiosInstance({ timeline });
+
+    const response = await instance.request({ url: `${baseUrl}/ping`, method: 'get' });
+    (response.data as Readable).resume();
+
+    const infoMessages = messagesOfType(timeline, 'info');
+    expect(infoMessages).toContainEqual(expect.stringMatching(/^Trying 127\.0\.0\.1:\d+\.\.\.$/));
+    expect(infoMessages).toContainEqual(expect.stringMatching(/^Connected to 127\.0\.0\.1 \(127\.0\.0\.1\) port \d+$/));
+    // The connection is established after the request is described and before the response arrives.
+    expect(typesOf(timeline).lastIndexOf('requestHeader')).toBeLessThan(
+      timeline.findIndex((entry) => entry.message?.startsWith('Trying '))
+    );
+    expect(timeline.findIndex((entry) => entry.message?.startsWith('Connected to '))).toBeLessThan(
+      typesOf(timeline).indexOf('response')
+    );
+  });
+});

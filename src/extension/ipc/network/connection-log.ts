@@ -1,0 +1,148 @@
+import http from 'http';
+import https from 'https';
+import { AxiosError } from 'axios';
+import type { ClientRequest, RequestOptions } from 'http';
+import type { PeerCertificate, TLSSocket } from 'tls';
+import type { Socket } from 'net';
+import type { NetworkLogEntry } from '@bruno-types';
+import type { CACertificatesCount } from './cert-utils';
+
+type LogEntry = (type: NetworkLogEntry['type'], message: string) => void;
+
+export interface ConnectionLogOptions {
+  log: LogEntry;
+  timeout?: number;
+  rejectUnauthorized?: boolean;
+  caCertificatesCount?: Partial<CACertificatesCount>;
+}
+
+interface ConnectionTarget {
+  host: string;
+  port: number;
+  isHttps: boolean;
+}
+
+// Node sends no ALPN extension unless asked; this is what gets reported as offered.
+const DEFAULT_ALPN_PROTOCOLS = ['h2', 'http/1.1'];
+
+const formatDistinguishedName = (fields: Record<string, string | string[]>): string =>
+  Object.entries(fields).map(([key, value]) => `${key}=${value}`).join(', ');
+
+const logSecureConnection = (socket: TLSSocket, log: LogEntry): void => {
+  const protocol = socket.getProtocol?.() || 'SSL/TLS';
+  const cipher = socket.getCipher?.();
+  log('tls', `SSL connection using ${protocol} / ${cipher ? `${cipher.name} (${cipher.version})` : 'Unknown cipher'}`);
+  log('tls', `ALPN: server accepted ${socket.alpnProtocol || 'None'}`);
+
+  const certificate = socket.getPeerCertificate?.(true) as PeerCertificate | undefined;
+  if (!certificate) {
+    return;
+  }
+
+  log('tls', 'Server certificate:');
+  if (certificate.subject) {
+    log('tls', ` subject: ${formatDistinguishedName(certificate.subject as unknown as Record<string, string>)}`);
+  }
+  if (certificate.valid_from) {
+    log('tls', ` start date: ${certificate.valid_from}`);
+  }
+  if (certificate.valid_to) {
+    log('tls', ` expire date: ${certificate.valid_to}`);
+  }
+  if (certificate.subjectaltname) {
+    log('tls', ` subjectAltName: ${certificate.subjectaltname}`);
+  }
+  if (certificate.issuer) {
+    log('tls', ` issuer: ${formatDistinguishedName(certificate.issuer as unknown as Record<string, string>)}`);
+  }
+
+  log('tls', socket.authorized !== false
+    ? 'SSL certificate verify ok.'
+    : 'SSL certificate verification skipped (rejectUnauthorized: false).');
+};
+
+/**
+ * VS Code's proxy agent drops the `agent` an extension passes for any non-localhost request, so these
+ * events are read off the request's own socket rather than from a custom agent.
+ */
+export const logConnection = (
+  request: ClientRequest,
+  { host, port, isHttps }: ConnectionTarget,
+  { log, rejectUnauthorized, caCertificatesCount }: ConnectionLogOptions
+): void => {
+  if (isHttps) {
+    log('info', `SSL validation: ${rejectUnauthorized === false ? 'disabled' : 'enabled'}`);
+  }
+
+  request.on('socket', (socket: Socket) => {
+    // A pooled socket is already connected and emits none of the events below.
+    if (!socket.connecting) {
+      return;
+    }
+
+    if (isHttps) {
+      log('tls', `ALPN: offers ${DEFAULT_ALPN_PROTOCOLS.join(', ')}`);
+      const { root = 0, system = 0, extra = 0, custom = 0 } = caCertificatesCount || {};
+      log('tls', `CA Certificates: ${root} root, ${system} system, ${extra} extra, ${custom} custom`);
+    }
+    log('info', `Trying ${host}:${port}...`);
+
+    const onLookup = (error: Error | null, address: string, _family: unknown, lookupHost: string) => {
+      log(error ? 'error' : 'info', error
+        ? `DNS lookup error for ${lookupHost}: ${error.message}`
+        : `DNS lookup: ${lookupHost} -> ${address}`);
+    };
+    const onConnect = () => {
+      log('info', `Connected to ${host} (${socket.remoteAddress || host}) port ${socket.remotePort || port}`);
+    };
+    const onSecureConnect = () => logSecureConnection(socket as TLSSocket, log);
+    const onError = (error: Error) => log('error', `Socket error: ${error.message}`);
+
+    socket.on('lookup', onLookup);
+    socket.on('connect', onConnect);
+    socket.on('secureConnect', onSecureConnect);
+    socket.on('error', onError);
+
+    // A kept-alive socket outlives the request; late events must not reach a finished timeline.
+    request.once('close', () => {
+      socket.off('lookup', onLookup);
+      socket.off('connect', onConnect);
+      socket.off('secureConnect', onSecureConnect);
+      socket.off('error', onError);
+    });
+  });
+};
+
+/** axios arms its connect-phase timeout only for its own transport, so this brings that timer along. */
+const armConnectPhaseTimeout = (request: ClientRequest, timeout: number): (() => void) => {
+  const timer = setTimeout(() => {
+    request.destroy(new AxiosError(`timeout of ${timeout}ms exceeded`, AxiosError.ECONNABORTED));
+  }, timeout);
+  const clear = () => clearTimeout(timer);
+  request.once('close', clear);
+  return clear;
+};
+
+/** Sending still goes through the stock http/https module, so proxy and TLS behaviour are untouched. */
+export const createConnectionLoggingTransport = (options: ConnectionLogOptions) => ({
+  request: (requestOptions: RequestOptions, callback?: (response: http.IncomingMessage) => void): ClientRequest => {
+    // axios rewrites the protocol to the proxy's, so follow the options, not the request URL.
+    const isHttps = (requestOptions.protocol || '').startsWith('https');
+    const transport = isHttps ? https : http;
+
+    let clearConnectPhaseTimeout: (() => void) | undefined;
+    const request = transport.request(requestOptions, (response) => {
+      clearConnectPhaseTimeout?.();
+      callback?.(response);
+    });
+    if (options.timeout && options.timeout > 0) {
+      clearConnectPhaseTimeout = armConnectPhaseTimeout(request, options.timeout);
+    }
+
+    const host = requestOptions.hostname || requestOptions.host;
+    if (host && !requestOptions.socketPath) {
+      logConnection(request, { host, port: Number(requestOptions.port) || (isHttps ? 443 : 80), isHttps }, options);
+    }
+    return request;
+  }
+});
