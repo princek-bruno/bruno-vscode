@@ -62,6 +62,21 @@ const logSecureConnection = (socket: TLSSocket, log: LogEntry): void => {
 };
 
 /**
+ * The axios config a request interceptor sees is not yet the wire set: `Content-Length` and
+ * `Accept-Encoding` are added by the http adapter and `Host` by Node, so the headers are read back off
+ * the request instead. `getRawHeaderNames` keeps the casing and the order they are written in.
+ */
+export const logRequestHeaders = (request: ClientRequest, log: LogEntry): void => {
+  const names = request.getRawHeaderNames();
+  names.forEach((name) => log('requestHeader', `${name}: ${request.getHeader(name)}`));
+
+  // Node writes this one straight into the header block from the agent, never through setHeader.
+  if (!names.some((name) => name.toLowerCase() === 'connection')) {
+    log('requestHeader', `Connection: ${request.shouldKeepAlive ? 'keep-alive' : 'close'}`);
+  }
+};
+
+/**
  * VS Code's proxy agent drops the `agent` an extension passes for any non-localhost request, so these
  * events are read off the request's own socket rather than from a custom agent.
  */
@@ -113,8 +128,12 @@ export const logConnection = (
   });
 };
 
-/** axios arms its connect-phase timeout only for its own transport, so this brings that timer along. */
-const armConnectPhaseTimeout = (request: ClientRequest, timeout: number): (() => void) => {
+/**
+ * axios arms this timer only for its own transport and, like the desktop app's `timeout`, lets it run
+ * until the response starts rather than stopping it at connect. Substituting the transport has to bring
+ * the same timer along, or `timeout` would stop covering a request that hangs before any data arrives.
+ */
+const armRequestTimeout = (request: ClientRequest, timeout: number): (() => void) => {
   const timer = setTimeout(() => {
     request.destroy(new AxiosError(`timeout of ${timeout}ms exceeded`, AxiosError.ECONNABORTED));
   }, timeout);
@@ -130,14 +149,16 @@ export const createConnectionLoggingTransport = (options: ConnectionLogOptions) 
     const isHttps = (requestOptions.protocol || '').startsWith('https');
     const transport = isHttps ? https : http;
 
-    let clearConnectPhaseTimeout: (() => void) | undefined;
+    let clearRequestTimeout: (() => void) | undefined;
     const request = transport.request(requestOptions, (response) => {
-      clearConnectPhaseTimeout?.();
+      clearRequestTimeout?.();
       callback?.(response);
     });
     if (options.timeout && options.timeout > 0) {
-      clearConnectPhaseTimeout = armConnectPhaseTimeout(request, options.timeout);
+      clearRequestTimeout = armRequestTimeout(request, options.timeout);
     }
+
+    logRequestHeaders(request, options.log);
 
     const host = requestOptions.hostname || requestOptions.host;
     if (host && !requestOptions.socketPath) {

@@ -45,7 +45,7 @@ const messagesOfType = (timeline: NetworkLogEntry[], type: NetworkLogEntry['type
 const typesOf = (timeline: NetworkLogEntry[]): string[] => timeline.map((entry) => entry.type);
 
 describe('axios-instance network log', () => {
-  it('logs the request, its headers and the response like the desktop app', async () => {
+  it('logs the request and the response like the desktop app', async () => {
     const timeline: NetworkLogEntry[] = [];
     const instance = createAxiosInstance({ timeline });
 
@@ -55,23 +55,18 @@ describe('axios-instance network log', () => {
       adapter: createStubAdapter([{ headers: { 'content-type': 'application/json' } }])
     });
 
+    // A stub adapter never builds a request, so the request headers are logged only against a real one.
     expect(typesOf(timeline)).toEqual([
       'separator',
       'info',
       'info',
       'request',
-      'requestHeader',
-      'requestHeader',
       'info',
       'response',
       'responseHeader',
       'info'
     ]);
     expect(messagesOfType(timeline, 'request')).toEqual(['GET https://api.example.com/breeds']);
-    expect(messagesOfType(timeline, 'requestHeader')).toEqual([
-      expect.stringMatching(/^Accept: application\/json/),
-      'User-Agent: bruno-runtime/1.0'
-    ]);
     expect(messagesOfType(timeline, 'response')).toEqual(['HTTP/1.1 200 OK']);
     expect(messagesOfType(timeline, 'responseHeader')).toEqual(['content-type: application/json']);
 
@@ -82,7 +77,7 @@ describe('axios-instance network log', () => {
     expect(infoMessages[3]).toMatch(/^Request completed in \d+ ms$/);
   });
 
-  it('logs the request body and skips headers axios will not send', async () => {
+  it('logs the request body', async () => {
     const timeline: NetworkLogEntry[] = [];
     const instance = createAxiosInstance({ timeline });
 
@@ -90,12 +85,11 @@ describe('axios-instance network log', () => {
       url: 'https://api.example.com/cats',
       method: 'post',
       data: '{"name":"tom"}',
-      headers: { 'content-type': 'application/json', 'x-dropped': false as unknown as string },
+      headers: { 'content-type': 'application/json' },
       adapter: createStubAdapter([{ status: 201, statusText: 'Created' }])
     });
 
     expect(messagesOfType(timeline, 'requestData')).toEqual(['{"name":"tom"}']);
-    expect(messagesOfType(timeline, 'requestHeader')).not.toContainEqual(expect.stringContaining('x-dropped'));
     expect(messagesOfType(timeline, 'response')).toEqual(['HTTP/1.1 201 Created']);
   });
 
@@ -270,6 +264,8 @@ describe('axios-instance connection log', () => {
 
   beforeAll(async () => {
     server = http.createServer((req, res) => {
+      // Every case here asserts on connection lines, which a socket left in the pool would skip.
+      res.setHeader('connection', 'close');
       if (req.url === '/never-responds') {
         return;
       }
@@ -320,6 +316,28 @@ describe('axios-instance connection log', () => {
     // The challenge is logged as its own hop, then the retry carries the credentials.
     expect(messagesOfType(timeline, 'response')).toEqual(['HTTP/1.1 401 Unauthorized', 'HTTP/1.1 200 OK']);
     expect(messagesOfType(timeline, 'requestHeader').filter((header) => header.startsWith('Authorization: Digest'))).toHaveLength(1);
+  });
+
+  it('logs the headers that went out, not the ones axios had before the adapter ran', async () => {
+    const timeline: NetworkLogEntry[] = [];
+    const instance = createAxiosInstance({ timeline });
+
+    const response = await instance.request({
+      url: `${baseUrl}/ping`,
+      method: 'post',
+      data: '{"name":"tom"}',
+      headers: { 'Content-Type': 'application/json', 'x-dropped': false as unknown as string }
+    });
+    (response.data as Readable).resume();
+
+    const headers = messagesOfType(timeline, 'requestHeader');
+    expect(headers).toContain('Content-Type: application/json');
+    expect(headers).toContain('User-Agent: bruno-runtime/1.0');
+    expect(headers).toContain('Content-Length: 14');
+    expect(headers).toContainEqual(expect.stringMatching(/^Accept-Encoding: gzip/));
+    expect(headers).toContainEqual(expect.stringMatching(/^Host: 127\.0\.0\.1:\d+$/));
+    expect(headers).toContain('Connection: keep-alive');
+    expect(headers).not.toContainEqual(expect.stringContaining('x-dropped'));
   });
 
   it('logs the connection the request was sent over', async () => {

@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { Mock } from 'vitest';
 import { EventEmitter } from 'events';
 import http from 'http';
 import https from 'https';
 import type { ClientRequest } from 'http';
 import type { NetworkLogEntry } from '@bruno-types';
 import { AxiosError } from 'axios';
-import { createConnectionLoggingTransport, logConnection } from './connection-log';
+import { createConnectionLoggingTransport, logConnection, logRequestHeaders } from './connection-log';
 
 const createRecorder = () => {
   const entries: Array<{ type: NetworkLogEntry['type']; message: string }> = [];
@@ -15,6 +16,14 @@ const createRecorder = () => {
     messages: () => entries.map((entry) => entry.message)
   };
 };
+
+const createClientRequest = (headers: Record<string, string> = {}, overrides: Record<string, unknown> = {}) =>
+  Object.assign(new EventEmitter(), {
+    shouldKeepAlive: true,
+    getRawHeaderNames: () => Object.keys(headers),
+    getHeader: (name: string) => headers[name],
+    ...overrides
+  }) as unknown as ClientRequest;
 
 const createConnectingSocket = (overrides: Record<string, unknown> = {}) =>
   Object.assign(new EventEmitter(), {
@@ -141,8 +150,8 @@ describe('logConnection', () => {
   it('sends over the module the request options ask for, not the one the URL implies', () => {
     const recorder = createRecorder();
     const transport = createConnectionLoggingTransport({ log: recorder.log });
-    const httpSpy = vi.spyOn(http, 'request').mockReturnValue(new EventEmitter() as unknown as ClientRequest);
-    const httpsSpy = vi.spyOn(https, 'request').mockReturnValue(new EventEmitter() as unknown as ClientRequest);
+    const httpSpy = vi.spyOn(http, 'request').mockReturnValue(createClientRequest());
+    const httpsSpy = vi.spyOn(https, 'request').mockReturnValue(createClientRequest());
 
     try {
       // What axios passes for an https request through an http proxy.
@@ -184,8 +193,8 @@ describe('logConnection', () => {
     vi.useFakeTimers();
     const recorder = createRecorder();
     const transport = createConnectionLoggingTransport({ log: recorder.log, timeout: 1_000 });
-    const stalled = Object.assign(new EventEmitter(), { destroy: vi.fn() });
-    const httpSpy = vi.spyOn(http, 'request').mockReturnValue(stalled as unknown as ClientRequest);
+    const stalled = createClientRequest({}, { destroy: vi.fn() }) as unknown as ClientRequest & { destroy: Mock };
+    const httpSpy = vi.spyOn(http, 'request').mockReturnValue(stalled);
 
     try {
       transport.request({ protocol: 'http:', host: 'stalled.invalid', port: 80, path: '/' });
@@ -205,10 +214,10 @@ describe('logConnection', () => {
     vi.useFakeTimers();
     const recorder = createRecorder();
     const transport = createConnectionLoggingTransport({ log: recorder.log, timeout: 1_000 });
-    const responded = Object.assign(new EventEmitter(), { destroy: vi.fn() });
+    const responded = createClientRequest({}, { destroy: vi.fn() });
     const httpSpy = vi.spyOn(http, 'request').mockImplementation(((_options: unknown, callback: () => void) => {
       setTimeout(callback, 10);
-      return responded as unknown as ClientRequest;
+      return responded;
     }) as never);
 
     try {
@@ -237,5 +246,40 @@ describe('logConnection', () => {
       'DNS lookup error for nope.invalid: getaddrinfo ENOTFOUND nope.invalid',
       'Socket error: connect ECONNREFUSED'
     ]);
+  });
+});
+
+describe('logRequestHeaders', () => {
+  it('logs the headers in the order and casing they are written in', () => {
+    const recorder = createRecorder();
+
+    logRequestHeaders(createClientRequest({
+      'Content-Type': 'application/json',
+      'Content-Length': '14',
+      Host: 'api.example.com'
+    }), recorder.log);
+
+    expect(recorder.entries).toEqual([
+      { type: 'requestHeader', message: 'Content-Type: application/json' },
+      { type: 'requestHeader', message: 'Content-Length: 14' },
+      { type: 'requestHeader', message: 'Host: api.example.com' },
+      { type: 'requestHeader', message: 'Connection: keep-alive' }
+    ]);
+  });
+
+  it('reports the connection Node will ask for when the request does not set one', () => {
+    const recorder = createRecorder();
+
+    logRequestHeaders(createClientRequest({}, { shouldKeepAlive: false }), recorder.log);
+
+    expect(recorder.messages()).toEqual(['Connection: close']);
+  });
+
+  it('keeps a Connection header the request set itself', () => {
+    const recorder = createRecorder();
+
+    logRequestHeaders(createClientRequest({ Connection: 'upgrade' }), recorder.log);
+
+    expect(recorder.messages()).toEqual(['Connection: upgrade']);
   });
 });

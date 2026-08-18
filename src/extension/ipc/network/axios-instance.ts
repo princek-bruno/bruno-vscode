@@ -157,13 +157,9 @@ const createAxiosInstance = (options: AxiosInstanceOptions = {}): AxiosInstance 
     timeline?.push({ timestamp: new Date(), type, message });
   };
 
-  const logHeaders = (type: 'requestHeader' | 'responseHeader', headers: Record<string, unknown>): void => {
+  const logResponseHeaders = (headers: Record<string, unknown>): void => {
     Object.entries(headers || {}).forEach(([name, value]) => {
-      // axios marks a header it must not send as `false`/`null`; those never reach the wire.
-      if (value === false || value === null || value === undefined) {
-        return;
-      }
-      log(type, `${name}: ${value}`);
+      log('responseHeader', `${name}: ${value}`);
     });
   };
 
@@ -198,9 +194,9 @@ const createAxiosInstance = (options: AxiosInstanceOptions = {}): AxiosInstance 
       log('requestData', requestBody);
     }
 
-    logHeaders('requestHeader', requestConfig.headers as unknown as Record<string, unknown>);
     log('info', proxyModeMessage);
 
+    // Headers are logged from the request the transport creates, where the wire set is complete.
     requestConfig.transport = connectionLoggingTransport;
 
     return requestConfig;
@@ -215,7 +211,7 @@ const createAxiosInstance = (options: AxiosInstanceOptions = {}): AxiosInstance 
         log('info', 'Using HTTP/2, server supports multiplexing');
       }
       log('response', `HTTP/${httpVersion || '1.1'} ${response.status} ${response.statusText}`);
-      logHeaders('responseHeader', response.headers as unknown as Record<string, unknown>);
+      logResponseHeaders(response.headers as unknown as Record<string, unknown>);
       log('info', `Request completed in ${getElapsedMs(response.config)} ms`);
 
       if (response.config.url && shouldStoreCookies()) {
@@ -244,7 +240,7 @@ const createAxiosInstance = (options: AxiosInstanceOptions = {}): AxiosInstance 
       if (error.response) {
         const httpVersion = getHttpVersion(error.response);
         log('response', `HTTP/${httpVersion || '1.1'} ${error.response.status} ${error.response.statusText}`);
-        logHeaders('responseHeader', error.response.headers as unknown as Record<string, unknown>);
+        logResponseHeaders(error.response.headers as unknown as Record<string, unknown>);
       } else {
         const cause = describeError(error.cause);
         if (cause) {
