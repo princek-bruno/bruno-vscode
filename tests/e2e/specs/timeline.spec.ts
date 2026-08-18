@@ -7,9 +7,7 @@ import { openBrunoSidebar, createCollection, openRequest, sendRequest, findColle
 
 const TEST_SERVER = 'http://127.0.0.1:8081';
 
-// A parallel change renames these hooks; match either name.
-const DETAIL = '[data-testid="timeline-item-detail"], [data-testid="timeline-detail"]';
-const NETWORK_PANEL = '[data-testid="timeline-panel-network"], .timeline-item-tab-content';
+const NETWORK_PANEL = '[data-testid="timeline-panel-network"]';
 
 async function openNetworkTab(editor: Frame): Promise<void> {
   await editor.locator('button').filter({ hasText: /^Network/ }).first().click();
@@ -97,7 +95,7 @@ test.describe('Response timeline', () => {
     const entries = editor.locator('[data-testid="timeline-item"]');
     const url = editor.locator('[data-testid="timeline-url"]').first();
     const header = editor.locator('[data-testid="timeline-item-header"]').first();
-    const detail = editor.locator(DETAIL).first();
+    const detail = editor.locator('[data-testid="timeline-detail"]').first();
 
     await expect(entries).toHaveCount(1, { timeout: 10_000 });
     await expect(url).toHaveText(`${TEST_SERVER}/ping`, { timeout: 10_000 });

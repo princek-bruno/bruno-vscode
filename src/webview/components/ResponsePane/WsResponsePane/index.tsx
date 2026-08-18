@@ -11,7 +11,7 @@ import StyledWrapper from './StyledWrapper';
 import ResponseLayoutToggle from '../ResponseLayoutToggle';
 import Timeline from '../Timeline';
 import ClearTimeline from '../ClearTimeline';
-import { useItemTimeline } from '../timeline-utils';
+import { useTimelineEntries } from '../timeline-utils';
 import Tab from 'components/Tab';
 import WSMessagesList from './WSMessagesList';
 import WSResponseHeaders from './WSResponseHeaders';
@@ -38,7 +38,7 @@ const WSResponsePane = ({
   const activeTabUid = useSelector((state) => state.tabs.activeTabUid);
   const isLoading = ['queued', 'sending'].includes(item.requestState);
 
-  const requestTimeline = useItemTimeline(collection, item);
+  const requestTimeline = useTimelineEntries(collection, item);
 
   const selectTab = (tab: any) => {
     dispatch(updateResponsePaneTab({

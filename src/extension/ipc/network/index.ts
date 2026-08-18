@@ -17,7 +17,7 @@ import { getEnvVars, getTreePathFromCollectionToItem, mergeVars, mergeHeaders, m
 import { getCollectionFormat } from '../../utils/filesystem';
 import fs from 'fs';
 import path from 'path';
-const { parseRequest: parseRequestFromFilestore } = require('@usebruno/filestore');
+import { parseRequest } from '../../utils/parse';
 import { registerOAuth2Handlers, applyOAuth2ToRequest } from './oauth2-handlers';
 import { runPreRequestScript, runPostResponseVars, runPostResponseScript, runTests, runAssertions } from '../../utils/script-runner';
 import { v4 as uuidv4 } from 'uuid';
@@ -671,7 +671,7 @@ const hydrateItemRequestFromDisk = async (
   try {
     const format = getCollectionFormat(collectionPath);
     const content = await fs.promises.readFile(pathname, 'utf8');
-    const parsed = await parseRequestFromFilestore(content, { format }) as Record<string, unknown>;
+    const parsed = await parseRequest(content, { format }) as Record<string, unknown>;
     // Preserve the runner-relevant fields we already have on `item` (uid, seq,
     // draft, etc.) while pulling in name/type/request/tags/examples/... from
     // the fresh parse.

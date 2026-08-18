@@ -12,7 +12,7 @@ import {
   readWorkspaceConfig
 } from '../utils/workspace-config';
 import { prepareWorkspaceConfigForClient } from '../ipc/workspace';
-const { parseCollection } = require('@usebruno/filestore');
+import { parseCollection } from '../utils/parse';
 
 // Message sender type - will be set by the extension (variadic args)
 type MessageSender = (channel: string, ...args: unknown[]) => void;

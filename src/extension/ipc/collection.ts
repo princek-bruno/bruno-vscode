@@ -53,18 +53,14 @@ import { getProcessEnvVars } from '../store/process-env';
 import collectionWatcher from '../app/collection-watcher';
 import { transformBrunoConfigBeforeSave } from '../utils/transformBrunoConfig';
 import { REQUEST_TYPES } from '../utils/constants';
+import { parseRequest, parseRequestViaWorker, parseCollection, parseFolder } from '../utils/parse';
 
 const {
-  parseRequest,
   stringifyRequest,
-  parseRequestViaWorker,
   stringifyRequestViaWorker,
-  parseCollection,
   stringifyCollection,
-  parseFolder,
   stringifyFolder,
-  stringifyEnvironment,
-  parseEnvironment
+  stringifyEnvironment
 } = require('@usebruno/filestore');
 
 const {

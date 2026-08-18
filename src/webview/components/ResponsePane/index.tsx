@@ -13,7 +13,7 @@ import TestResults from './TestResults';
 import TestResultsLabel from './TestResultsLabel';
 import Timeline from './Timeline';
 import ClearTimeline from './ClearTimeline';
-import { useItemTimeline } from './timeline-utils';
+import { useTimelineEntries } from './timeline-utils';
 import ScriptError from './ScriptError';
 import ScriptErrorIcon from './ScriptErrorIcon';
 import StyledWrapper from './StyledWrapper';
@@ -112,7 +112,7 @@ const ResponsePane = ({
 
   const hasScriptError = item?.preRequestScriptErrorMessage || item?.postResponseScriptErrorMessage || item?.testScriptErrorMessage;
 
-  const timelineCount = useItemTimeline(collection, item).length;
+  const timelineCount = useTimelineEntries(collection, item).length;
 
   const allTabs = useMemo((): Array<{ key: string; label: React.ReactNode; indicator: React.ReactNode }> => {
     return [
