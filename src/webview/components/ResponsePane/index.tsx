@@ -80,7 +80,8 @@ const ResponsePane = ({
     dispatch(updateResponseViewTab({ uid: item.uid, responseViewTab: newViewTab }));
   }, [dispatch, item.uid]);
 
-  // Keyed on the item because this pane instance is reused as the selection changes.
+  // Keyed on the item because this pane instance is reused as the selection changes. A request that
+  // failed on its own terms is the actionable error, so the card waits behind its icon.
   useEffect(() => {
     setShowScriptErrorCard(hasScriptError(item) && !response.error);
   }, [item?.uid, hasScriptError(item), response.error]);
@@ -110,8 +111,7 @@ const ResponsePane = ({
   }, [response.size, response.dataBuffer]);
   const responseHeadersCount = typeof response.headers === 'object' ? Object.entries(response.headers).length : 0;
 
-  // A request that failed on its own terms is the actionable error, so the card stands aside.
-  const showScriptError = hasScriptError(item) && !response.error;
+  const showScriptError = hasScriptError(item);
 
   const timelineCount = useItemTimeline(collection, item).length;
 
