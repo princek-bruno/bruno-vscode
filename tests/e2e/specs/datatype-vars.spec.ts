@@ -15,8 +15,6 @@ const TYPED_REQUEST_BRU = [
   'vars:post-response {', '  saved: res.body.token', '}', ''
 ].join('\n');
 
-// A folder holding a request that consumes object vars declared above it, at folder and
-// collection level.
 const FOLDER_NAME = 'Api';
 
 const COLLECTION_ROOT_BRU = [
@@ -95,8 +93,6 @@ test.describe('Data types in request variables', () => {
     // The object var's annotation is untouched throughout.
     expect(fs.readFileSync(requestFile, 'utf8')).toContain('@object');
 
-    // The editable half of the popover is what a save writes back, so "[object Object]"
-    // there would persist that literal string to disk.
     const locators = buildCommonLocators(editor);
     const cfgToken = locators.requestUrl.highlightedToken('cfg');
     await expect(cfgToken).toBeVisible({ timeout: 15_000 });
@@ -118,8 +114,6 @@ test.describe('Data types in request variables', () => {
     await expect(popoverEditor).not.toContainText('[object Object]');
   });
 
-  // An object var is most often declared once at folder or collection level and consumed
-  // by the requests below it, so the popover has to resolve those scopes too.
   test('object vars inherited from folder and collection render as JSON in the popover', async ({ page, tmpDir }) => {
     const sidebar = await openBrunoSidebar(page);
     const collectionName = 'Inherited Vars';
@@ -142,8 +136,7 @@ test.describe('Data types in request variables', () => {
       sidebar.locator('[data-testid="sidebar-collection-item-row"]').filter({ hasText: 'Nested' })
     ).toBeVisible({ timeout: 15_000 });
 
-    // Expanding the folder re-renders the tree, and a click landing mid-render never
-    // reaches the open-request handler.
+    // A click landing mid re-render never reaches the open-request handler.
     await page.waitForTimeout(1500);
     const opened = await openRequest(page, sidebar, collectionName, 'Nested');
     const editor = await getActiveEditorFrame(page, opened);
@@ -167,7 +160,6 @@ test.describe('Data types in request variables', () => {
       await expect(locators.varPopover.editableDisplay()).toContainText(`"scope": "${scope}"`);
       await expect(popover).not.toContainText('[object Object]');
 
-      // Drop the popover so the next hover starts from a clean slate.
       await editor.evaluate(() => {
         document.querySelectorAll('.CodeMirror-brunoVarInfo').forEach((el) => el.remove());
       });

@@ -359,7 +359,6 @@ export const renderVarInfo = (token: any, options: any) => {
 
     const allVariables = collection ? getAllVariables(collection, item) : {};
 
-    // The raw value, not the resolved one. #usebruno/bruno/#6265
     const editorInitialValue = valueToString(rawValue, VALUE_INDENT);
 
     const cmEditor = CodeMirror(editorContainer, {
@@ -390,7 +389,7 @@ export const renderVarInfo = (token: any, options: any) => {
       maskedEditor.enable();
     }
 
-    // Must match what the editor holds, or a no-op blur reads as an edit and saves.
+    // Must match the editor's content, or a no-op blur reads as an edit and saves.
     let originalValue = editorInitialValue;
     let isEditing = false;
 

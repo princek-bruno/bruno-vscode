@@ -23,7 +23,6 @@ export const buildCommonLocators = (frame: FrameLike) => ({
   },
   requestUrl: {
     editor: () => frame.locator('#request-url'),
-    // A highlighted token in the URL editor: a `:param` or a `{{variable}}`.
     highlightedToken: (name: string) =>
       frame
         .locator('#request-url .CodeMirror span.cm-variable-valid, #request-url .CodeMirror span.cm-variable-invalid')
@@ -32,8 +31,7 @@ export const buildCommonLocators = (frame: FrameLike) => ({
   },
   // Var-info hover popover shown over a highlighted token.
   varPopover: {
-    // A dismissed popover lingers for the length of its fade, so a re-hover can briefly
-    // leave two in the DOM: `all` counts them, the rest read the newest.
+    // A dismissed popover lingers for its fade, so a re-hover can briefly leave two.
     all: () => frame.locator('.CodeMirror-brunoVarInfo'),
     container: () => frame.locator('.CodeMirror-brunoVarInfo').last(),
     editableDisplay: () => frame.locator('.CodeMirror-brunoVarInfo').last().locator('.var-value-editable-display'),
