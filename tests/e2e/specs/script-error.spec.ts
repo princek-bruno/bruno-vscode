@@ -149,6 +149,37 @@ test.describe('Script errors in the response pane', () => {
     await expect(editor.locator('[data-testid="script-error-card"]')).toHaveCount(0);
   });
 
+  test('the script error behind a failed request is still reachable from the icon', async ({ page, tmpDir }) => {
+    const sidebar = await openBrunoSidebar(page);
+    const collectionName = 'Bad Host Reachable';
+
+    await createCollection(page, sidebar, collectionName, tmpDir, 'bru');
+
+    const collectionDir = findCollectionDir(tmpDir);
+    fs.writeFileSync(path.join(collectionDir, 'BadHost.bru'), [
+      'meta {', '  name: BadHost', '  type: http', '  seq: 1', '}', '',
+      'get {', '  url: http://does-not-exist-bruno-test.invalid/x', '  body: none', '  auth: inherit', '}', '',
+      'script:pre-request {',
+      "  bru.setEnvVar('Bad Name', 'x');",
+      '}',
+      ''
+    ].join('\n'), 'utf8');
+
+    const editor = await openRequest(page, sidebar, collectionName, 'BadHost');
+    await editor.locator('#send-request').click();
+
+    await expect(editor.locator('.error').first()).toContainText('does-not-exist-bruno-test.invalid', { timeout: 30_000 });
+
+    const icon = editor.locator('[data-testid="script-error-icon"]').first();
+    await expect(icon).toBeVisible();
+    await icon.click();
+
+    const card = editor.locator('[data-testid="script-error-card"]').first();
+    await expect(card).toBeVisible();
+    await expect(card.locator('[data-testid="script-error-title"]')).toHaveText('Pre-Request Script Error');
+    await expect(card.locator('[data-testid="code-line-error"]')).toContainText("bru.setEnvVar('Bad Name', 'x')");
+  });
+
   test('an empty url wins over a script error raised in the same send', async ({ page, tmpDir }) => {
     const sidebar = await openBrunoSidebar(page);
     const collectionName = 'Empty Url Script';
