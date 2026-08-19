@@ -376,6 +376,7 @@ const GlobalStyle = createGlobalStyle`
     font-family: Inter, sans-serif;
     font-weight: 400;
     word-break: break-word;
+    white-space: pre-wrap;
     line-height: 1.25rem;
     color: ${(props) => props.theme.dropdown.color};
     min-height: 1.75rem;

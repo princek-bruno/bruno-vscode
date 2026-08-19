@@ -20,7 +20,7 @@ async function editPathParamViaPopover(
 ): Promise<void> {
   const locators = buildCommonLocators(editor);
 
-  const paramSpan = locators.requestUrl.pathParamToken(paramName);
+  const paramSpan = locators.requestUrl.highlightedToken(paramName);
   await expect(paramSpan).toBeVisible({ timeout: 5_000 });
 
   // Retry the hover: move off the token first so a fresh mouseover fires.
@@ -55,7 +55,7 @@ async function editPathParamViaPopover(
   await editor.evaluate(() => {
     document.querySelectorAll('.CodeMirror-brunoVarInfo').forEach((el) => el.remove());
   });
-  await expect(popover).toHaveCount(0, { timeout: 5_000 });
+  await expect(locators.varPopover.all()).toHaveCount(0, { timeout: 5_000 });
 }
 
 // Read the path param value from the Params -> Path table.
