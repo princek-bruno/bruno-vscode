@@ -282,4 +282,21 @@ describe('logRequestHeaders', () => {
 
     expect(recorder.messages()).toEqual(['Connection: upgrade']);
   });
+
+  it('masks the proxy credential and leaves the credentials the user set alone', () => {
+    const recorder = createRecorder();
+
+    logRequestHeaders(createClientRequest({
+      'Proxy-Authorization': 'Basic cHJveHl1c2VyOnN1cDNyczNjcmV0',
+      Authorization: 'Bearer user-token',
+      Cookie: 'session=abc'
+    }), recorder.log);
+
+    expect(recorder.messages()).toEqual([
+      `Proxy-Authorization: ${'*'.repeat('Basic cHJveHl1c2VyOnN1cDNyczNjcmV0'.length)}`,
+      'Authorization: Bearer user-token',
+      'Cookie: session=abc',
+      'Connection: keep-alive'
+    ]);
+  });
 });

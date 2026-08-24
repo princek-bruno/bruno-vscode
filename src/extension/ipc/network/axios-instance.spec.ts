@@ -340,6 +340,28 @@ describe('axios-instance connection log', () => {
     expect(headers).not.toContainEqual(expect.stringContaining('x-dropped'));
   });
 
+  it('keeps the proxy password out of the log', async () => {
+    const timeline: NetworkLogEntry[] = [];
+    const instance = createAxiosInstance({
+      timeline,
+      proxyMode: 'on',
+      proxyConfig: {
+        protocol: 'http',
+        hostname: '127.0.0.1',
+        port: (server.address() as { port: number }).port,
+        auth: { username: 'proxyuser', password: 'sup3rs3cret' }
+      }
+    });
+
+    // axios puts Proxy-Authorization on the request itself, so it reaches the log with every other header.
+    const response = await instance.request({ url: 'http://api.example.com/ping', method: 'get' });
+    (response.data as Readable).resume();
+
+    const credential = `Basic ${Buffer.from('proxyuser:sup3rs3cret').toString('base64')}`;
+    expect(messagesOfType(timeline, 'requestHeader')).toContain(`Proxy-Authorization: ${'*'.repeat(credential.length)}`);
+    expect(timeline.map((entry) => entry.message).join('\n')).not.toContain('sup3rs3cret');
+  });
+
   it('logs the connection the request was sent over', async () => {
     const timeline: NetworkLogEntry[] = [];
     const instance = createAxiosInstance({ timeline });

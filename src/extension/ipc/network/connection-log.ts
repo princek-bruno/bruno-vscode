@@ -25,6 +25,12 @@ interface ConnectionTarget {
 // Node sends no ALPN extension unless asked; this is what gets reported as offered.
 const DEFAULT_ALPN_PROTOCOLS = ['h2', 'http/1.1'];
 
+const MASK_CHAR = '*';
+
+/** Proxy credentials are put on the request by axios, not by the user, so the name is logged and the value never is. */
+const maskProxyCredential = (name: string, value: string): string =>
+  name.toLowerCase() === 'proxy-authorization' ? MASK_CHAR.repeat(value.length) : value;
+
 const formatDistinguishedName = (fields: Record<string, string | string[]>): string =>
   Object.entries(fields).map(([key, value]) => `${key}=${value}`).join(', ');
 
@@ -68,7 +74,7 @@ const logSecureConnection = (socket: TLSSocket, log: LogEntry): void => {
  */
 export const logRequestHeaders = (request: ClientRequest, log: LogEntry): void => {
   const names = request.getRawHeaderNames();
-  names.forEach((name) => log('requestHeader', `${name}: ${request.getHeader(name)}`));
+  names.forEach((name) => log('requestHeader', `${name}: ${maskProxyCredential(name, String(request.getHeader(name)))}`));
 
   // Node writes this one straight into the header block from the agent, never through setHeader.
   if (!names.some((name) => name.toLowerCase() === 'connection')) {
