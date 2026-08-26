@@ -5,6 +5,7 @@ import CodeEditor from 'components/CodeEditor';
 import { updateRequestTests } from 'providers/ReduxStore/slices/collections';
 import { sendRequest, saveRequest } from 'providers/ReduxStore/slices/collections/actions';
 import { useTheme } from 'providers/Theme';
+import StyledWrapper from './StyledWrapper';
 
 interface TestsProps {
   item: unknown;
@@ -36,18 +37,20 @@ const Tests = ({
   const onSave = () => dispatch(saveRequest(item.uid, collection.uid));
 
   return (
-    <CodeEditor
-      collection={collection}
-      value={tests || ''}
-      theme={displayedTheme}
-      font={get(preferences, 'font.codeFont', 'default')}
-      fontSize={get(preferences, 'font.codeFontSize')}
-      onEdit={onEdit}
-      mode="javascript"
-      onRun={onRun}
-      onSave={onSave}
-      showHintsFor={['req', 'res', 'bru']}
-    />
+    <StyledWrapper className="w-full h-full">
+      <CodeEditor
+        collection={collection}
+        value={tests || ''}
+        theme={displayedTheme}
+        font={get(preferences, 'font.codeFont', 'default')}
+        fontSize={get(preferences, 'font.codeFontSize')}
+        onEdit={onEdit}
+        mode="javascript"
+        onRun={onRun}
+        onSave={onSave}
+        showHintsFor={['req', 'res', 'bru']}
+      />
+    </StyledWrapper>
   );
 };
 
