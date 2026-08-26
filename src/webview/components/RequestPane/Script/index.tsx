@@ -1,10 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import get from 'lodash/get';
+import find from 'lodash/find';
 import { useDispatch, useSelector } from 'react-redux';
 import CodeEditor from 'components/CodeEditor';
 import { updateRequestScript, updateResponseScript } from 'providers/ReduxStore/slices/collections';
 import { sendRequest, saveRequest } from 'providers/ReduxStore/slices/collections/actions';
+import { updateScriptPaneTab } from 'providers/ReduxStore/slices/tabs';
 import { useTheme } from 'providers/Theme';
+import useFocusErrorLine from 'hooks/useFocusErrorLine';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from 'components/Tabs';
 
 interface ScriptProps {
@@ -18,11 +21,14 @@ const Script = ({
   collection
 }: any) => {
   const dispatch = useDispatch();
-  const [activeTab, setActiveTab] = useState('pre-request');
   const preRequestEditorRef = useRef(null);
   const postResponseEditorRef = useRef(null);
   const requestScript = item.draft ? get(item, 'draft.request.script.req') : get(item, 'request.script.req');
   const responseScript = item.draft ? get(item, 'draft.request.script.res') : get(item, 'request.script.res');
+
+  const scriptPaneTab = useSelector((state: any) => find(state.tabs.tabs, (t: any) => t.uid === item.uid)?.scriptPaneTab);
+  const activeTab = scriptPaneTab || 'pre-request';
+  const setActiveTab = (tab: string) => dispatch(updateScriptPaneTab({ uid: item.uid, scriptPaneTab: tab }));
 
   const { displayedTheme } = useTheme();
   const preferences = useSelector((state: any) => state.app.preferences);
@@ -40,6 +46,20 @@ const Script = ({
 
     return () => clearTimeout(timer);
   }, [activeTab]);
+
+  useFocusErrorLine({
+    uid: item.uid,
+    editorRef: preRequestEditorRef,
+    scriptPhase: 'pre-request',
+    isVisible: activeTab === 'pre-request'
+  });
+
+  useFocusErrorLine({
+    uid: item.uid,
+    editorRef: postResponseEditorRef,
+    scriptPhase: 'post-response',
+    isVisible: activeTab === 'post-response'
+  });
 
   const onRequestScriptEdit = (value: string) => {
     dispatch(

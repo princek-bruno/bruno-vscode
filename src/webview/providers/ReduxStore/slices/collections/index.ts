@@ -2035,6 +2035,7 @@ export const collectionsSlice = createSlice({
       }
 
       item.response = response;
+      item.errorSource = (response as { errorSource?: string } | null)?.errorSource || null;
       item.requestState = 'received';
       item.loading = false;
 
@@ -2710,6 +2711,7 @@ export const collectionsSlice = createSlice({
           SCRIPT_ERROR_FIELDS.forEach((field) => {
             (item as any)[field] = null;
           });
+          item.errorSource = null;
 
           (item as any).testResults = [];
           (item as any).assertionResults = [];

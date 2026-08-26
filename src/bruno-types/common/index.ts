@@ -5,14 +5,15 @@ export type { MultipartFormEntry, MultipartForm } from './multipart-form';
 export type { FileEntry, FileList } from './file';
 export type { GraphqlBody } from './graphql';
 export type { Script, ScriptErrorContext, ScriptErrorContextLine, ScriptMetadata, ScriptSegment } from './scripts';
-export type { ScriptErrorPhase } from './script-errors';
+export type { ScriptErrorPhase, ScriptType } from './script-errors';
 export {
   SCRIPT_ERROR_PHASES,
   SCRIPT_ERROR_FIELDS,
   scriptErrorMessageField,
   scriptErrorContextField,
   getScriptError,
-  hasScriptError
+  hasScriptError,
+  isScriptSourcedError
 } from './script-errors';
 export type {
   Auth,

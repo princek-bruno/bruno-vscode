@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import get from 'lodash/get';
 import { useDispatch, useSelector } from 'react-redux';
 import CodeEditor from 'components/CodeEditor';
 import { updateRequestTests } from 'providers/ReduxStore/slices/collections';
 import { sendRequest, saveRequest } from 'providers/ReduxStore/slices/collections/actions';
 import { useTheme } from 'providers/Theme';
+import useFocusErrorLine from 'hooks/useFocusErrorLine';
 
 interface TestsProps {
   item: unknown;
@@ -17,10 +18,13 @@ const Tests = ({
   collection
 }: any) => {
   const dispatch = useDispatch();
+  const editorRef = useRef(null);
   const tests = item.draft ? get(item, 'draft.request.tests') : get(item, 'request.tests');
 
   const { displayedTheme } = useTheme();
   const preferences = useSelector((state) => state.app.preferences);
+
+  useFocusErrorLine({ uid: item.uid, editorRef, scriptPhase: 'test' });
 
   const onEdit = (value: any) => {
     dispatch(
@@ -37,6 +41,7 @@ const Tests = ({
 
   return (
     <CodeEditor
+      ref={editorRef}
       collection={collection}
       value={tests || ''}
       theme={displayedTheme}

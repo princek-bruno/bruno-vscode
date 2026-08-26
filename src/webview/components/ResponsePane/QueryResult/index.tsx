@@ -1,6 +1,7 @@
 import { debounce } from 'lodash';
 import { useTheme } from 'providers/Theme/index';
 import React, { useMemo, useState } from 'react';
+import { isScriptSourcedError } from '@bruno-types';
 import { formatResponse, getContentType } from 'utils/common';
 import { getDefaultResponseFormat, detectContentTypeFromBase64 } from 'utils/response';
 import LargeResponseWarning from '../LargeResponseWarning';
@@ -184,7 +185,7 @@ const QueryResult = ({
       {error ? (
         <div>
           {/* The runner reports a script failure through item.error too, where the card already shows it. */}
-          {item?.errorSource === 'script' ? null : (
+          {isScriptSourcedError(item) ? null : (
             <div className="error" style={{ whiteSpace: 'pre-line' }}>{formatErrorMessage(error)}</div>
           )}
 

@@ -25,7 +25,7 @@ import HeightBoundContainer from 'ui/HeightBoundContainer';
 import ResponseStopWatch from 'components/ResponsePane/ResponseStopWatch';
 import WSMessagesList from './WsResponsePane/WSMessagesList';
 import ResponsiveTabs from 'ui/ResponsiveTabs';
-import { hasScriptError } from '@bruno-types';
+import { hasScriptError, isScriptSourcedError } from '@bruno-types';
 
 interface RIGHT_CONTENT_EXPANDED_WIDTHProps {
   item?: React.ReactNode;
@@ -80,11 +80,13 @@ const ResponsePane = ({
     dispatch(updateResponseViewTab({ uid: item.uid, responseViewTab: newViewTab }));
   }, [dispatch, item.uid]);
 
+  const requestFailed = Boolean(response.error) && !isScriptSourcedError(item);
+
   // Keyed on the item because this pane instance is reused as the selection changes. A request that
   // failed on its own terms is the actionable error, so the card waits behind its icon.
   useEffect(() => {
-    setShowScriptErrorCard(hasScriptError(item) && !response.error);
-  }, [item?.uid, hasScriptError(item), response.error]);
+    setShowScriptErrorCard(hasScriptError(item) && !requestFailed);
+  }, [item?.uid, hasScriptError(item), requestFailed]);
 
   const selectTab = (tab: any) => {
     dispatch(

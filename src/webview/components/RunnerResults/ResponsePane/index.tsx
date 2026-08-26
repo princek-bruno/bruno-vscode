@@ -13,7 +13,7 @@ import SkippedRequest from 'components/ResponsePane/SkippedRequest';
 import RunnerTimeline from 'components/ResponsePane/RunnerTimeline';
 import ScriptError from 'components/ResponsePane/ScriptError';
 import ScriptErrorIcon from 'components/ResponsePane/ScriptErrorIcon';
-import { hasScriptError } from '@bruno-types';
+import { hasScriptError, isScriptSourcedError } from '@bruno-types';
 
 interface ResponsePaneProps {
   rightPaneWidth?: number;
@@ -32,19 +32,19 @@ const ResponsePane = ({
 
   const { requestSent, responseReceived, testResults, assertionResults, preRequestTestResults, postResponseTestResults, error } = item;
 
+  // A request that failed on its own terms is the actionable error, so the card stands aside.
+  const requestFailed = Boolean(error) && !isScriptSourcedError(item);
+
   // Keyed on the item because this pane instance is reused as the selection changes.
   useEffect(() => {
-    setShowScriptErrorCard(hasScriptError(item) && !(Boolean(error) && item?.errorSource !== 'script'));
-  }, [item?.uid, hasScriptError(item), error, item?.errorSource]);
+    setShowScriptErrorCard(hasScriptError(item) && !requestFailed);
+  }, [item?.uid, hasScriptError(item), requestFailed]);
 
   const headers = get(item, 'responseReceived.headers', []);
   const status = get(item, 'responseReceived.status', 0);
   const size = get(item, 'responseReceived.size', 0);
   const duration = get(item, 'responseReceived.duration', 0);
 
-  // A request that failed on its own terms is the actionable error, so the card stands aside. A
-  // script failure reported through the same channel is not a request failure.
-  const requestFailed = Boolean(error) && item?.errorSource !== 'script';
   const showScriptError = hasScriptError(item) && !requestFailed;
 
   const selectTab = (tab: any) => setSelectedTab(tab);

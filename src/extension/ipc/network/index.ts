@@ -1052,22 +1052,28 @@ const registerNetworkIpc = (): void => {
         cancelTokenUid
       });
 
-      let skipRequest = false;
-      try {
-        const preRequestResult = await runPreRequestScript(scriptRequest, scriptContext);
+      const preRequestResult = await runPreRequestScript(scriptRequest, scriptContext);
 
-        notifyScriptExecution('main:run-request-event', 'pre-request', { itemUid, requestUid, collectionUid }, preRequestResult);
+      notifyScriptExecution('main:run-request-event', 'pre-request', { itemUid, requestUid, collectionUid }, preRequestResult);
 
-        skipRequest = preRequestResult.skipRequest || false;
-
-        if (preRequestResult.runtimeVariables) {
-          Object.assign(mutableRuntimeVariables, preRequestResult.runtimeVariables);
-          scriptContext.runtimeVariables = mutableRuntimeVariables;
-          context.runtimeVariables = mutableRuntimeVariables as Record<string, string>;
-        }
-      } catch (preReqError) {
-        console.error('Pre-request script error:', preReqError);
+      if (preRequestResult.runtimeVariables) {
+        Object.assign(mutableRuntimeVariables, preRequestResult.runtimeVariables);
+        scriptContext.runtimeVariables = mutableRuntimeVariables;
+        context.runtimeVariables = mutableRuntimeVariables as Record<string, string>;
       }
+
+      if (!preRequestResult.success) {
+        return {
+          status: 'Error',
+          isError: true,
+          error: preRequestResult.error || 'An error occurred in pre request script',
+          errorSource: 'script',
+          size: 0,
+          duration: 0
+        };
+      }
+
+      const skipRequest = preRequestResult.skipRequest || false;
 
       if (skipRequest) {
         sendToWebview('main:run-request-event', {

@@ -8,6 +8,8 @@ export const SCRIPT_ERROR_PHASES = [
 
 export type ScriptErrorPhase = (typeof SCRIPT_ERROR_PHASES)[number]['phase'];
 
+export type ScriptType = (typeof SCRIPT_ERROR_PHASES)[number]['scriptType'];
+
 export const scriptErrorMessageField = (phase: ScriptErrorPhase): string => `${phase}ScriptErrorMessage`;
 
 export const scriptErrorContextField = (phase: ScriptErrorPhase): string => `${phase}ScriptErrorContext`;
@@ -27,3 +29,6 @@ export const getScriptError = (
 
 export const hasScriptError = (item: Record<string, unknown> | null | undefined): boolean =>
   SCRIPT_ERROR_PHASES.some(({ phase }) => Boolean(item?.[scriptErrorMessageField(phase)]));
+
+export const isScriptSourcedError =(item: Record<string, unknown> | null | undefined): boolean =>
+  item?.errorSource === 'script';

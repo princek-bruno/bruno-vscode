@@ -1,12 +1,17 @@
 import React, { useState } from 'react';
-import { IconX, IconChevronDown, IconChevronRight } from '@tabler/icons';
-import type { ScriptErrorContext, ScriptErrorPhase } from '@bruno-types';
+import { useDispatch, useSelector } from 'react-redux';
+import { IconX, IconChevronDown, IconChevronRight, IconExternalLink } from '@tabler/icons';
+import type { ScriptErrorContext, ScriptErrorPhase, ScriptType } from '@bruno-types';
 import { SCRIPT_ERROR_PHASES, getScriptError } from '@bruno-types';
 import ErrorBanner from 'ui/ErrorBanner';
 import CodeSnippet from 'ui/CodeSnippet';
 import { getTreePathFromCollectionToItem } from 'utils/collections';
 import { normalizePath } from 'utils/common/path';
+import { updateRequestPaneTab, updateScriptPaneTab, setFocusErrorLine } from 'providers/ReduxStore/slices/tabs';
+import { isTabForItemPresent } from 'selectors/tab';
 import StyledWrapper from './StyledWrapper';
+
+const SCRIPTABLE_REQUEST_TYPES = ['http-request', 'graphql-request'];
 
 interface ScriptErrorProps {
   item?: Record<string, unknown>;
@@ -18,6 +23,7 @@ interface ScriptErrorCardProps {
   title: string;
   message: string;
   errorContext: ScriptErrorContext;
+  scriptPhase: ScriptType;
   item?: Record<string, unknown>;
   collection?: Record<string, unknown>;
   onClose?: () => void;
@@ -31,11 +37,11 @@ const PHASE_TITLES: Record<ScriptErrorPhase, string> = {
 
 /** "echo json.bru" -> Request, "auth/folder.bru" -> "Folder: auth", "collection.bru" -> Collection.
  *  An unmatched folder falls back to a bare "Folder". */
-const getErrorSourceLabel = (
+const getErrorSource = (
   filePath: string,
   item?: Record<string, unknown>,
   collection?: Record<string, unknown>
-): string => {
+): { sourceType: 'request' | 'folder' | 'collection'; label: string } => {
   const normalizedPath = normalizePath(filePath);
 
   // Before the collection case, so folder.yml is not mistaken for a collection file.
@@ -53,24 +59,54 @@ const getErrorSourceLabel = (
         : folderFileName;
 
       if (folderRelPath === normalizedPath) {
-        return `Folder: ${node.name}`;
+        return { sourceType: 'folder', label: `Folder: ${node.name}` };
       }
     }
 
-    return 'Folder';
+    return { sourceType: 'folder', label: 'Folder' };
   }
 
   if (normalizedPath === 'collection.bru' || /^opencollection\.ya?ml$/.test(normalizedPath)) {
-    return 'Collection';
+    return { sourceType: 'collection', label: 'Collection' };
   }
 
-  return 'Request';
+  return { sourceType: 'request', label: 'Request' };
 };
 
-const ScriptErrorCard = ({ title, message, errorContext, item, collection, onClose }: ScriptErrorCardProps) => {
+const ScriptErrorCard = ({ title, message, errorContext, scriptPhase, item, collection, onClose }: ScriptErrorCardProps) => {
+  const dispatch = useDispatch();
   const [showStack, setShowStack] = useState(false);
 
   const filePath = errorContext.filePath ? normalizePath(errorContext.filePath) : null;
+  const source = filePath ? getErrorSource(filePath, item, collection) : null;
+  const errorLine = errorContext.errorLine;
+
+  const hasRequestTab =useSelector(isTabForItemPresent({ itemUid: item?.uid as string }));
+  const canNavigate = source?.sourceType === 'request'
+    && typeof errorLine === 'number'
+    && SCRIPTABLE_REQUEST_TYPES.includes(item?.type as string)
+    && hasRequestTab;
+
+  const navigateToErrorLine = () => {
+    if (!canNavigate) return;
+
+    const uid = item!.uid as string;
+    if (scriptPhase === 'test') {
+      dispatch(updateRequestPaneTab({ uid, requestPaneTab: 'tests' }));
+    } else {
+      dispatch(updateRequestPaneTab({ uid, requestPaneTab: 'script' }));
+      dispatch(updateScriptPaneTab({ uid, scriptPaneTab: scriptPhase }));
+    }
+    dispatch(setFocusErrorLine({ uid, scriptPhase, line: errorLine, requestedAt: Date.now() }));
+  };
+
+  const onFilePathKeyDown = (e: React.KeyboardEvent) => {
+    if (!canNavigate) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      navigateToErrorLine();
+    }
+  };
 
   return (
     <div className="script-error-card" data-testid="script-error-card">
@@ -84,8 +120,19 @@ const ScriptErrorCard = ({ title, message, errorContext, item, collection, onClo
       </div>
       {filePath && (
         <div className="script-error-source-label" data-testid="script-error-source-label">
-          <span>{getErrorSourceLabel(filePath, item, collection)}</span>
-          <span className="script-error-file-path" data-testid="script-error-file-path">{filePath}</span>
+          <span>{source!.label}</span>
+          <span
+            className={`script-error-file-path${canNavigate ? ' navigable' : ''}`}
+            data-testid="script-error-file-path"
+            role={canNavigate ? 'button' : undefined}
+            tabIndex={canNavigate ? 0 : undefined}
+            onClick={navigateToErrorLine}
+            onKeyDown={onFilePathKeyDown}
+            title={canNavigate ? `Go to line ${errorLine} in ${filePath}` : undefined}
+          >
+            <span>{filePath}</span>
+            {canNavigate && <IconExternalLink size={12} className="flex-shrink-0" />}
+          </span>
         </div>
       )}
       <CodeSnippet lines={errorContext.lines} />
@@ -115,7 +162,7 @@ const ScriptErrorCard = ({ title, message, errorContext, item, collection, onClo
 
 const ScriptError = ({ item, collection, onClose }: ScriptErrorProps) => {
   const errors = SCRIPT_ERROR_PHASES
-    .map(({ phase }) => ({ phase, title: PHASE_TITLES[phase], ...getScriptError(item, phase) }))
+    .map(({ phase, scriptType }) => ({ phase, scriptType, title: PHASE_TITLES[phase], ...getScriptError(item, phase) }))
     .filter((e) => e.message);
 
   if (!errors.length) return null;
@@ -126,13 +173,14 @@ const ScriptError = ({ item, collection, onClose }: ScriptErrorProps) => {
 
   return (
     <StyledWrapper className="mt-4 mb-2">
-      {errors.map(({ phase, title, message, context }) => (
+      {errors.map(({ phase, scriptType, title, message, context }) => (
         context
           ? <ScriptErrorCard
               key={phase}
               title={title}
               message={message as string}
               errorContext={context}
+              scriptPhase={scriptType}
               item={item}
               collection={collection}
               onClose={onClose}

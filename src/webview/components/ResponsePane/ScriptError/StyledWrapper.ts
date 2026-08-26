@@ -57,16 +57,33 @@ const StyledWrapper = styled.div`
   }
 
   .script-error-file-path {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
     min-width: 0;
     max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
     font-family: monospace;
     font-size: ${(props) => props.theme.font.size.xs};
     font-weight: 400;
     text-transform: none;
     letter-spacing: normal;
     opacity: 0.8;
+    transition: opacity 0.15s, text-decoration 0.15s;
+
+    span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    &.navigable {
+      cursor: pointer;
+
+      &:hover {
+        opacity: 1;
+        text-decoration: underline;
+      }
+    }
   }
 
   .script-error-message {
