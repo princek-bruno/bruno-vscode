@@ -14,7 +14,11 @@ export interface ConnectionLogOptions {
   timeout?: number;
   rejectUnauthorized?: boolean;
   caCertificatesCount?: Partial<CACertificatesCount>;
+  proxyModeMessage?: string;
 }
+
+export const sslValidationMessage = (rejectUnauthorized?: boolean): string =>
+  `SSL validation: ${rejectUnauthorized === false ? 'disabled' : 'enabled'}`;
 
 interface ConnectionTarget {
   host: string;
@@ -92,7 +96,7 @@ export const logConnection = (
   { log, rejectUnauthorized, caCertificatesCount }: ConnectionLogOptions
 ): void => {
   if (isHttps) {
-    log('info', `SSL validation: ${rejectUnauthorized === false ? 'disabled' : 'enabled'}`);
+    log('info', sslValidationMessage(rejectUnauthorized));
   }
 
   request.on('socket', (socket: Socket) => {
@@ -165,6 +169,12 @@ export const createConnectionLoggingTransport = (options: ConnectionLogOptions) 
     }
 
     logRequestHeaders(request, options.log);
+
+    // The desktop app resolves the proxy once the headers are written, so the line sits between the
+    // header block and the connection trace.
+    if (options.proxyModeMessage) {
+      options.log('info', options.proxyModeMessage);
+    }
 
     const host = requestOptions.hostname || requestOptions.host;
     if (host && !requestOptions.socketPath) {
