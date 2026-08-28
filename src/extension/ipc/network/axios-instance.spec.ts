@@ -183,6 +183,7 @@ describe('axios-instance network log', () => {
     expect(messagesOfType(timeline, 'info')).toContain(
       'Changed method from POST to GET for 301 redirect and removed request body'
     );
+    expect(messagesOfType(timeline, 'responseHeader').filter((header) => header.startsWith('request-duration: '))).toHaveLength(2);
   });
 
   it('logs the method change of a redirect that was already a GET', async () => {
@@ -212,7 +213,7 @@ describe('axios-instance network log', () => {
     ]);
   });
 
-  it('times each hop of a redirect chain separately', async () => {
+  it('leaves the SSL line off a redirect to a plaintext target', async () => {
     const timeline: NetworkLogEntry[] = [];
     const instance = createAxiosInstance({ timeline });
 
@@ -220,13 +221,13 @@ describe('axios-instance network log', () => {
       url: 'https://api.example.com/old',
       method: 'get',
       adapter: createStubAdapter([
-        { status: 301, statusText: 'Moved Permanently', headers: { location: '/new' } },
+        { status: 302, statusText: 'Found', headers: { location: 'http://api.example.com/new' } },
         { status: 200 }
       ])
     });
 
-    const durations = messagesOfType(timeline, 'responseHeader').filter((header) => header.startsWith('request-duration: '));
-    expect(durations).toHaveLength(2);
+    expect(messagesOfType(timeline, 'info')).toContain('Proxy mode: off');
+    expect(messagesOfType(timeline, 'info')).not.toContainEqual(expect.stringContaining('SSL validation'));
   });
 
   it('does not log when no timeline is passed', async () => {
@@ -390,10 +391,11 @@ describe('axios-instance connection log', () => {
     (response.data as Readable).resume();
 
     const messages = timeline.map((entry) => (entry.message as string) ?? '');
+    const proxyLines = messages.filter((message) => message.startsWith('Proxy mode:'));
     const proxyLine = messages.indexOf(`Proxy mode: on | http://127.0.0.1:${proxyPort}`);
-    const lastHeader = messages.lastIndexOf(messagesOfType(timeline, 'requestHeader').at(-1) as string);
 
-    expect(proxyLine).toBeGreaterThan(lastHeader);
+    expect(proxyLines).toEqual([`Proxy mode: on | http://127.0.0.1:${proxyPort}`]);
+    expect(proxyLine).toBeGreaterThan(typesOf(timeline).lastIndexOf('requestHeader'));
     expect(proxyLine).toBeLessThan(messages.findIndex((message) => message.startsWith('Trying ')));
   });
 

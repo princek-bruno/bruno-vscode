@@ -134,7 +134,7 @@ const createAxiosInstance = (options: AxiosInstanceOptions = {}): AxiosInstance 
     httpsAgent: new https.Agent(agentOpts),
     headers: {
       'User-Agent': 'bruno-runtime/1.0',
-      // VS Code's proxy agent drops the keep-alive agent below, so Node would otherwise fall back to
+      // VS Code's proxy agent drops the keep-alive agent above, so Node would otherwise fall back to
       // its global agent and send `Connection: close` where the desktop app sends keep-alive.
       Connection: 'keep-alive'
     }
@@ -160,7 +160,7 @@ const createAxiosInstance = (options: AxiosInstanceOptions = {}): AxiosInstance 
     timeline?.push({ timestamp: new Date(), type, message });
   };
 
-  /** `request-duration` is not a header the server sent; the desktop app appends it here and the timeline shows it. */
+  /** `request-duration` is not a header the server sent; the desktop app appends it here. */
   const logResponseHeaders = (headers: Record<string, unknown>, elapsedMs: number): void => {
     Object.entries(headers || {}).forEach(([name, value]) => {
       log('responseHeader', `${name}: ${value}`);
@@ -186,7 +186,7 @@ const createAxiosInstance = (options: AxiosInstanceOptions = {}): AxiosInstance 
   instance.interceptors.request.use((requestConfig: InternalAxiosRequestConfig) => {
     const startTime = Date.now();
     (requestConfig as TimedRequestConfig).metadata = { startTime };
-    // Sent on the wire, as the desktop app does, so the hop's start time is visible in the timeline.
+    // Sent on the wire, as the desktop app does.
     requestConfig.headers['request-start-time'] = startTime;
 
     if (!timeline) {
@@ -343,9 +343,12 @@ const createAxiosInstance = (options: AxiosInstanceOptions = {}): AxiosInstance 
           }
         }
 
-        // The hop is re-resolved against the proxy before it is sent, which the desktop app reports here.
+        // The desktop app re-resolves the proxy for the hop before sending it, so these repeat once
+        // more when the re-issued request reaches the transport.
         log('info', proxyModeMessage);
-        log('info', sslValidationMessage(agentOpts.rejectUnauthorized));
+        if (/^https:/i.test(redirectUrl)) {
+          log('info', sslValidationMessage(agentOpts.rejectUnauthorized));
+        }
 
         return instance(requestConfig);
       }
