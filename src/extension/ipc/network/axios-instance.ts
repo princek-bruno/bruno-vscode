@@ -134,8 +134,7 @@ const createAxiosInstance = (options: AxiosInstanceOptions = {}): AxiosInstance 
     httpsAgent: new https.Agent(agentOpts),
     headers: {
       'User-Agent': 'bruno-runtime/1.0',
-      // VS Code's proxy agent drops the keep-alive agent above, so Node would otherwise fall back to
-      // its global agent and send `Connection: close` where the desktop app sends keep-alive.
+      // VS Code's proxy agent drops the agent above, and Node's global agent sends `Connection: close`.
       Connection: 'keep-alive'
     }
   };
@@ -160,7 +159,6 @@ const createAxiosInstance = (options: AxiosInstanceOptions = {}): AxiosInstance 
     timeline?.push({ timestamp: new Date(), type, message });
   };
 
-  /** `request-duration` is not a header the server sent; the desktop app appends it here. */
   const logResponseHeaders = (headers: Record<string, unknown>, elapsedMs: number): void => {
     Object.entries(headers || {}).forEach(([name, value]) => {
       log('responseHeader', `${name}: ${value}`);
@@ -186,7 +184,6 @@ const createAxiosInstance = (options: AxiosInstanceOptions = {}): AxiosInstance 
   instance.interceptors.request.use((requestConfig: InternalAxiosRequestConfig) => {
     const startTime = Date.now();
     (requestConfig as TimedRequestConfig).metadata = { startTime };
-    // Sent on the wire, as the desktop app does.
     requestConfig.headers['request-start-time'] = startTime;
 
     if (!timeline) {
@@ -203,8 +200,7 @@ const createAxiosInstance = (options: AxiosInstanceOptions = {}): AxiosInstance 
       log('requestData', requestBody);
     }
 
-    // Headers and the proxy line are logged from the request the transport creates, where the wire
-    // set is complete.
+    // Headers and the proxy line are logged from the request the transport creates, where the wire set is complete.
     requestConfig.transport = connectionLoggingTransport;
 
     return requestConfig;
@@ -343,8 +339,7 @@ const createAxiosInstance = (options: AxiosInstanceOptions = {}): AxiosInstance 
           }
         }
 
-        // The desktop app re-resolves the proxy for the hop before sending it, so these repeat once
-        // more when the re-issued request reaches the transport.
+        // Repeated once more by the transport, as the desktop app does for every hop.
         log('info', proxyModeMessage);
         if (/^https:/i.test(redirectUrl)) {
           log('info', sslValidationMessage(agentOpts.rejectUnauthorized));

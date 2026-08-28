@@ -170,8 +170,7 @@ export const createConnectionLoggingTransport = (options: ConnectionLogOptions) 
 
     logRequestHeaders(request, options.log);
 
-    // The desktop app resolves the proxy once the headers are written, so the line sits between the
-    // header block and the connection trace.
+    // Sits between the header block and the connection trace, where the desktop app puts it.
     options.log('info', options.proxyModeMessage);
 
     const host = requestOptions.hostname || requestOptions.host;
