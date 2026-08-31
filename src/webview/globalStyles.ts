@@ -283,7 +283,7 @@ const GlobalStyle = createGlobalStyle`
   }
 
   // Autocomplete hints dropdown container
-  .CodeMirror-hints {
+  ul.CodeMirror-hints {
     position: absolute;
     overflow-y: auto;
     max-height: 20em;
@@ -303,9 +303,16 @@ const GlobalStyle = createGlobalStyle`
     padding: 0.25rem;
     font-size: ${(props) => props.theme.font.size.sm};
     font-family: inherit;
+    color: ${(props) => props.theme.dropdown.color};
   }
 
-  .CodeMirror-hint {
+  // graphiql colours this sidebar from a palette globals.css pins to black in every theme.
+  ul.CodeMirror-hints .CodeMirror-hint-information,
+  ul.CodeMirror-hints .CodeMirror-hint-information * {
+    color: ${(props) => props.theme.dropdown.color};
+  }
+
+  li.CodeMirror-hint {
     color: ${(props) => props.theme.dropdown.color};
     border-radius: ${(props) => props.theme.border.radius.base};
     line-height: 1.5rem;
