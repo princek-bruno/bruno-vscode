@@ -424,6 +424,31 @@ export async function addRequestHeader(
 }
 
 /**
+ * Add a query param row on the Params tab (the first of its two EditableTables).
+ */
+export async function addQueryParam(
+  page: Page,
+  editor: Frame,
+  name: string,
+  value: string,
+  { enabled = true }: { enabled?: boolean } = {}
+): Promise<void> {
+  await openRequestTab(editor, 'params');
+
+  const rows = buildCommonLocators(editor).editableTable.firstTableRows();
+  await expect(rows.first()).toBeVisible({ timeout: 10_000 });
+  const emptyRowIdx = (await rows.count()) - 1;
+  const row = buildCommonLocators(rows.nth(emptyRowIdx)).editableTable;
+
+  await row.columnNameInput().fill(name);
+  await setCodeMirrorValue(page, row.columnValueEditor(), value);
+
+  if (!enabled) {
+    await row.columnCheckbox().uncheck();
+  }
+}
+
+/**
  * Switch the request to Bearer auth and set the token, entirely via the Auth tab.
  */
 export async function setBearerToken(page: Page, editor: Frame, token: string): Promise<void> {

@@ -134,7 +134,7 @@ declare module 'markdown-it' {
 
 declare module '@usebruno/common' {
   export function parseQueryParams(url: string): Array<{ name: string; value?: string }>;
-  export function extractPromptVariables(str: string): string[];
+  export function extractPromptVariables(value: unknown): string[];
   export function parsePathParams(url: string): Record<string, string>;
   export function getSubdirectoriesFromRoot(collection: unknown, item: unknown): string[];
   export function getContentType(headers: unknown[]): string;
@@ -147,7 +147,7 @@ declare module '@usebruno/common' {
 
 declare module '@usebruno/common/utils' {
   export function parseQueryParams(url: string): Array<{ name: string; value?: string }>;
-  export function extractPromptVariables(str: string): string[];
+  export function extractPromptVariables(value: unknown): string[];
   export function parsePathParams(url: string): Record<string, string>;
   export function getSubdirectoriesFromRoot(collection: unknown, item: unknown): string[];
   export function getContentType(headers: unknown[]): string;

@@ -204,6 +204,7 @@ import { sanitizeName } from 'utils/common/regex';
 import { buildPersistedEnvVariables, applyScriptVars, getScriptModifiedKeys } from 'utils/environments';
 import { safeParseJSON, safeStringifyJSON } from 'utils/common/index';
 import { resolveInheritedAuth } from 'utils/auth';
+import { getPromptScannableBody, getPromptScannableParams } from 'utils/prompt-variables';
 import { addTab } from 'providers/ReduxStore/slices/tabs';
 import { updateSettingsSelectedTab } from './index';
 import { saveGlobalEnvironment } from 'providers/ReduxStore/slices/global-environments';
@@ -683,11 +684,9 @@ const extractPromptVariablesForRequest = async (item: AppItem, collection: AppCo
 
     // Attempt to extract unique prompt variables from anywhere in the request and environment variables.
     prompts.push(...extractPromptVariables(allVariables));
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const bodyContent = (request.body as any)?.[request.body?.mode as string];
-    prompts.push(...extractPromptVariables(bodyContent));
+    prompts.push(...extractPromptVariables(getPromptScannableBody(request.body)));
     prompts.push(...extractPromptVariables(headers as any));
-    prompts.push(...extractPromptVariables((request as any).params));
+    prompts.push(...extractPromptVariables(getPromptScannableParams((request as any).params)));
     prompts.push(...extractPromptVariables(resolvedAuthRequest.auth));
     prompts.push(...extractPromptVariables(request.url));
 

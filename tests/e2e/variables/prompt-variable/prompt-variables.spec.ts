@@ -1,6 +1,7 @@
 import { test, expect } from '../../utils/fixtures';
 import {
   addRequestHeader,
+  addQueryParam,
   setBearerToken,
   fillJsonBody,
   addRequestVar,
@@ -182,6 +183,33 @@ test.describe('Prompt variables — HTTP send', () => {
     await clickSend(editor);
 
     // No modal blocks the send — the response arrives directly.
+    await expectSentWithoutPrompt(page, editor);
+  });
+
+  test('a prompt on a commented out body line does not trigger the modal', async ({ page, tmpDir }) => {
+    const sidebar = await setupCollection(page, tmpDir, 'PV Commented');
+
+    // /raw-body echoes the body as sent, so a commented JSON body does not fail to parse.
+    const editor = await newHttpRequest(
+      page, sidebar, 'PV Commented', 'Commented Prompt', `${SERVER}/raw-body`, 'POST'
+    );
+    await fillJsonBody(page, editor, '{\n"marker":"sent"\n// ,"draft":"{{?Commented}}"\n}');
+
+    await clickSend(editor);
+
+    await expectSentWithoutPrompt(page, editor);
+  });
+
+  test('a prompt in an unchecked query param does not trigger the modal', async ({ page, tmpDir }) => {
+    const sidebar = await setupCollection(page, tmpDir, 'PV Unchecked');
+
+    const editor = await newHttpRequest(
+      page, sidebar, 'PV Unchecked', 'Unchecked Prompt', `${SERVER}/api/echo/query?marker=sent`
+    );
+    await addQueryParam(page, editor, 'token', '{{?Unchecked}}', { enabled: false });
+
+    await clickSend(editor);
+
     await expectSentWithoutPrompt(page, editor);
   });
 

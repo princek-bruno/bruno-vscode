@@ -86,7 +86,8 @@ export const buildCommonLocators = (frame: FrameLike) => ({
     firstTableRows: () => frame.getByTestId('editable-table').first().locator('tbody tr'),
     columnNameEditor: () => frame.getByTestId('column-name').locator('.CodeMirror'),
     columnNameInput: () => frame.getByTestId('column-name').locator('input'),
-    columnValueEditor: () => frame.getByTestId('column-value').locator('.CodeMirror')
+    columnValueEditor: () => frame.getByTestId('column-value').locator('.CodeMirror'),
+    columnCheckbox: () => frame.getByTestId('column-checkbox')
   },
   auth: {
     modeSelector: () => frame.locator('.auth-mode-selector'),
