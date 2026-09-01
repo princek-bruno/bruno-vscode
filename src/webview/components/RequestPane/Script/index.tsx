@@ -9,6 +9,7 @@ import { updateScriptPaneTab } from 'providers/ReduxStore/slices/tabs';
 import { useTheme } from 'providers/Theme';
 import useFocusErrorLine from 'hooks/useFocusErrorLine';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from 'components/Tabs';
+import StyledWrapper from './StyledWrapper';
 
 interface ScriptProps {
   item: unknown;
@@ -87,7 +88,7 @@ const Script = ({
   const onSave = () => dispatch(saveRequest(item.uid, collection.uid));
 
   return (
-    <div className="w-full h-full flex flex-col">
+    <StyledWrapper className="w-full h-full flex flex-col">
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="pre-request">Pre Request</TabsTrigger>
@@ -126,7 +127,7 @@ const Script = ({
           />
         </TabsContent>
       </Tabs>
-    </div>
+    </StyledWrapper>
   );
 };
 

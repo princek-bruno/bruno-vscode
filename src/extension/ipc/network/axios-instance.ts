@@ -12,7 +12,7 @@ import { getCookieStringForUrl, saveCookies } from '../../utils/cookies';
 import { preferencesUtil } from '../../store/preferences';
 import { safeStringifyJSON } from '../../utils/common';
 import { MultipartField, createFormData, formatMultipartData } from '../../utils/form-data';
-import { createConnectionLoggingTransport } from './connection-log';
+import { createConnectionLoggingTransport, sslValidationMessage } from './connection-log';
 import type { CACertificatesCount } from './cert-utils';
 
 // Import digest auth helper using require due to type declaration issues in @usebruno/requests
@@ -133,7 +133,9 @@ const createAxiosInstance = (options: AxiosInstanceOptions = {}): AxiosInstance 
     proxy: false,
     httpsAgent: new https.Agent(agentOpts),
     headers: {
-      'User-Agent': 'bruno-runtime/1.0'
+      'User-Agent': 'bruno-runtime/1.0',
+      // VS Code's proxy agent drops the agent above, and Node's global agent sends `Connection: close`.
+      Connection: 'keep-alive'
     }
   };
 
@@ -157,10 +159,11 @@ const createAxiosInstance = (options: AxiosInstanceOptions = {}): AxiosInstance 
     timeline?.push({ timestamp: new Date(), type, message });
   };
 
-  const logResponseHeaders = (headers: Record<string, unknown>): void => {
+  const logResponseHeaders = (headers: Record<string, unknown>, elapsedMs: number): void => {
     Object.entries(headers || {}).forEach(([name, value]) => {
       log('responseHeader', `${name}: ${value}`);
     });
+    log('responseHeader', `request-duration: ${elapsedMs}`);
   };
 
   const proxyModeMessage = proxyMode === 'on' && proxyConfig
@@ -174,11 +177,14 @@ const createAxiosInstance = (options: AxiosInstanceOptions = {}): AxiosInstance 
     log,
     timeout,
     rejectUnauthorized: agentOpts.rejectUnauthorized,
-    caCertificatesCount: caCertificatesCount as Partial<CACertificatesCount> | undefined
+    caCertificatesCount: caCertificatesCount as Partial<CACertificatesCount> | undefined,
+    proxyModeMessage
   });
 
   instance.interceptors.request.use((requestConfig: InternalAxiosRequestConfig) => {
-    (requestConfig as TimedRequestConfig).metadata = { startTime: Date.now() };
+    const startTime = Date.now();
+    (requestConfig as TimedRequestConfig).metadata = { startTime };
+    requestConfig.headers['request-start-time'] = startTime;
 
     if (!timeline) {
       return requestConfig;
@@ -194,9 +200,7 @@ const createAxiosInstance = (options: AxiosInstanceOptions = {}): AxiosInstance 
       log('requestData', requestBody);
     }
 
-    log('info', proxyModeMessage);
-
-    // Headers are logged from the request the transport creates, where the wire set is complete.
+    // Headers and the proxy line are logged from the request the transport creates, where the wire set is complete.
     requestConfig.transport = connectionLoggingTransport;
 
     return requestConfig;
@@ -206,13 +210,14 @@ const createAxiosInstance = (options: AxiosInstanceOptions = {}): AxiosInstance 
 
   instance.interceptors.response.use(
     (response: AxiosResponse) => {
+      const elapsedMs = getElapsedMs(response.config);
       const httpVersion = getHttpVersion(response);
       if (httpVersion?.startsWith('2')) {
         log('info', 'Using HTTP/2, server supports multiplexing');
       }
       log('response', `HTTP/${httpVersion || '1.1'} ${response.status} ${response.statusText}`);
-      logResponseHeaders(response.headers as unknown as Record<string, unknown>);
-      log('info', `Request completed in ${getElapsedMs(response.config)} ms`);
+      logResponseHeaders(response.headers as unknown as Record<string, unknown>, elapsedMs);
+      log('info', `Request completed in ${elapsedMs} ms`);
 
       if (response.config.url && shouldStoreCookies()) {
         saveCookies(response.config.url, response.headers as Record<string, string | string[]>);
@@ -235,12 +240,14 @@ const createAxiosInstance = (options: AxiosInstanceOptions = {}): AxiosInstance 
         collectionPath?: string;
       };
 
+      const elapsedMs = getElapsedMs(error.config);
+
       log('error', 'there was an error executing the request!');
 
       if (error.response) {
         const httpVersion = getHttpVersion(error.response);
         log('response', `HTTP/${httpVersion || '1.1'} ${error.response.status} ${error.response.statusText}`);
-        logResponseHeaders(error.response.headers as unknown as Record<string, unknown>);
+        logResponseHeaders(error.response.headers as unknown as Record<string, unknown>, elapsedMs);
       } else {
         const cause = describeError(error.cause);
         if (cause) {
@@ -257,7 +264,7 @@ const createAxiosInstance = (options: AxiosInstanceOptions = {}): AxiosInstance 
       }
 
       if (error.response && redirectResponseCodes.includes(error.response.status)) {
-        log('info', `Request completed in ${getElapsedMs(error.config)} ms`);
+        log('info', `Request completed in ${elapsedMs} ms`);
 
         if (originalRequest.url && shouldStoreCookies()) {
           saveCookies(originalRequest.url, error.response.headers as Record<string, string | string[]>);
@@ -303,9 +310,7 @@ const createAxiosInstance = (options: AxiosInstanceOptions = {}): AxiosInstance 
             delete requestConfig.headers['content-type'];
             delete requestConfig.headers['Content-Type'];
           }
-          if (originalMethod !== 'get') {
-            log('info', `Changed method from ${originalMethod.toUpperCase()} to GET for ${statusCode} redirect and removed request body`);
-          }
+          log('info', `Changed method from ${originalMethod.toUpperCase()} to GET for ${statusCode} redirect and removed request body`);
         } else {
           if (requestConfig.data && typeof requestConfig.data === 'object' &&
               requestConfig.data.constructor && requestConfig.data.constructor.name === 'FormData') {
@@ -332,6 +337,12 @@ const createAxiosInstance = (options: AxiosInstanceOptions = {}): AxiosInstance 
           if (cookieString && requestConfig.headers) {
             requestConfig.headers['cookie'] = cookieString;
           }
+        }
+
+        // Repeated once more by the transport, as the desktop app does for every hop.
+        log('info', proxyModeMessage);
+        if (/^https:/i.test(redirectUrl)) {
+          log('info', sslValidationMessage(agentOpts.rejectUnauthorized));
         }
 
         return instance(requestConfig);

@@ -61,20 +61,22 @@ describe('axios-instance network log', () => {
       'info',
       'info',
       'request',
-      'info',
       'response',
+      'responseHeader',
       'responseHeader',
       'info'
     ]);
     expect(messagesOfType(timeline, 'request')).toEqual(['GET https://api.example.com/breeds']);
     expect(messagesOfType(timeline, 'response')).toEqual(['HTTP/1.1 200 OK']);
-    expect(messagesOfType(timeline, 'responseHeader')).toEqual(['content-type: application/json']);
+    expect(messagesOfType(timeline, 'responseHeader')).toEqual([
+      'content-type: application/json',
+      expect.stringMatching(/^request-duration: \d+$/)
+    ]);
 
     const infoMessages = messagesOfType(timeline, 'info');
     expect(infoMessages[0]).toBe('Preparing request to https://api.example.com/breeds');
     expect(infoMessages[1]).toMatch(/^Current time is \d{4}-\d{2}-\d{2}T/);
-    expect(infoMessages[2]).toBe('Proxy mode: off');
-    expect(infoMessages[3]).toMatch(/^Request completed in \d+ ms$/);
+    expect(infoMessages[2]).toMatch(/^Request completed in \d+ ms$/);
   });
 
   it('logs the request body', async () => {
@@ -107,19 +109,6 @@ describe('axios-instance network log', () => {
     expect(messagesOfType(timeline, 'requestData')).toEqual(['<request body redacted>']);
   });
 
-  it('names the proxy when one is configured', async () => {
-    const timeline: NetworkLogEntry[] = [];
-    const instance = createAxiosInstance({
-      timeline,
-      proxyMode: 'on',
-      proxyConfig: { protocol: 'http', hostname: 'proxy.local', port: 8080 }
-    });
-
-    await instance.request({ url: 'https://api.example.com/breeds', method: 'get', adapter: createStubAdapter([{}]) });
-
-    expect(messagesOfType(timeline, 'info')).toContain('Proxy mode: on | http://proxy.local:8080');
-  });
-
   it('reports HTTP/2 multiplexing', async () => {
     const timeline: NetworkLogEntry[] = [];
     const instance = createAxiosInstance({ timeline });
@@ -146,7 +135,10 @@ describe('axios-instance network log', () => {
 
     expect(messagesOfType(timeline, 'error')).toEqual(['there was an error executing the request!']);
     expect(messagesOfType(timeline, 'response')).toEqual(['HTTP/1.1 404 Not Found']);
-    expect(messagesOfType(timeline, 'responseHeader')).toEqual(['content-length: 9']);
+    expect(messagesOfType(timeline, 'responseHeader')).toEqual([
+      'content-length: 9',
+      expect.stringMatching(/^request-duration: \d+$/)
+    ]);
   });
 
   it('logs the cause of a request that never got a response', async () => {
@@ -191,6 +183,51 @@ describe('axios-instance network log', () => {
     expect(messagesOfType(timeline, 'info')).toContain(
       'Changed method from POST to GET for 301 redirect and removed request body'
     );
+    expect(messagesOfType(timeline, 'responseHeader').filter((header) => header.startsWith('request-duration: '))).toHaveLength(2);
+  });
+
+  it('logs the method change of a redirect that was already a GET', async () => {
+    const timeline: NetworkLogEntry[] = [];
+    const instance = createAxiosInstance({ timeline });
+
+    await instance.request({
+      url: 'https://api.example.com/redirect',
+      method: 'get',
+      adapter: createStubAdapter([
+        { status: 302, statusText: 'Found', headers: { location: '/target' } },
+        { status: 200 }
+      ])
+    });
+
+    expect(messagesOfType(timeline, 'info')).toEqual([
+      'Preparing request to https://api.example.com/redirect',
+      expect.stringMatching(/^Current time is /),
+      expect.stringMatching(/^Request completed in \d+ ms$/),
+      'Resolving relative redirect URL: /target → https://api.example.com/target',
+      'Changed method from GET to GET for 302 redirect and removed request body',
+      'Proxy mode: off',
+      'SSL validation: disabled',
+      'Preparing request to https://api.example.com/target',
+      expect.stringMatching(/^Current time is /),
+      expect.stringMatching(/^Request completed in \d+ ms$/)
+    ]);
+  });
+
+  it('leaves the SSL line off a redirect to a plaintext target', async () => {
+    const timeline: NetworkLogEntry[] = [];
+    const instance = createAxiosInstance({ timeline });
+
+    await instance.request({
+      url: 'https://api.example.com/old',
+      method: 'get',
+      adapter: createStubAdapter([
+        { status: 302, statusText: 'Found', headers: { location: 'http://api.example.com/new' } },
+        { status: 200 }
+      ])
+    });
+
+    expect(messagesOfType(timeline, 'info')).toContain('Proxy mode: off');
+    expect(messagesOfType(timeline, 'info')).not.toContainEqual(expect.stringContaining('SSL validation'));
   });
 
   it('does not log when no timeline is passed', async () => {
@@ -337,7 +374,29 @@ describe('axios-instance connection log', () => {
     expect(headers).toContainEqual(expect.stringMatching(/^Accept-Encoding: gzip/));
     expect(headers).toContainEqual(expect.stringMatching(/^Host: 127\.0\.0\.1:\d+$/));
     expect(headers).toContain('Connection: keep-alive');
+    expect(headers).toContainEqual(expect.stringMatching(/^request-start-time: \d+$/));
     expect(headers).not.toContainEqual(expect.stringContaining('x-dropped'));
+  });
+
+  it('names the proxy between the header block and the connection trace', async () => {
+    const timeline: NetworkLogEntry[] = [];
+    const proxyPort = (server.address() as { port: number }).port;
+    const instance = createAxiosInstance({
+      timeline,
+      proxyMode: 'on',
+      proxyConfig: { protocol: 'http', hostname: '127.0.0.1', port: proxyPort }
+    });
+
+    const response = await instance.request({ url: 'http://api.example.com/ping', method: 'get' });
+    (response.data as Readable).resume();
+
+    const messages = timeline.map((entry) => (entry.message as string) ?? '');
+    const proxyLines = messages.filter((message) => message.startsWith('Proxy mode:'));
+    const proxyLine = messages.indexOf(`Proxy mode: on | http://127.0.0.1:${proxyPort}`);
+
+    expect(proxyLines).toEqual([`Proxy mode: on | http://127.0.0.1:${proxyPort}`]);
+    expect(proxyLine).toBeGreaterThan(typesOf(timeline).lastIndexOf('requestHeader'));
+    expect(proxyLine).toBeLessThan(messages.findIndex((message) => message.startsWith('Trying ')));
   });
 
   it('keeps the proxy password out of the log', async () => {

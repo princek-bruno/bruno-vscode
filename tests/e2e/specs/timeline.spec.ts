@@ -207,4 +207,30 @@ test.describe('Response timeline', () => {
     await expect(editor.locator('[data-testid="timeline-item"]').first())
       .toContainText('ERR_BAD_REQUEST', { timeout: 15_000 });
   });
+
+  test('a json body can be collapsed from the fold gutter', async ({ page, tmpDir }) => {
+    const collectionName = 'Timeline Fold Gutter';
+    const { sidebar, collectionDir } = await setupCollection(page, collectionName, tmpDir);
+
+    fs.writeFileSync(path.join(collectionDir, 'Echo.bru'), [
+      'meta {', '  name: Echo', '  type: http', '  seq: 1', '}', '',
+      'post {', `  url: ${TEST_SERVER}/api/echo/json`, '  body: json', '  auth: none', '}', '',
+      'body:json {', '  {', '    "name": "bruno",', '    "tags": [', '      "api"', '    ]', '  }', '}', ''
+    ].join('\n'), 'utf8');
+
+    const editor = await openRequest(page, sidebar, collectionName, 'Echo');
+    await sendRequest(editor, 200);
+    await openTimelineTab(editor);
+
+    await editor.locator('[data-testid="timeline-item-header"]').first().click();
+    await editor.locator('.tl-tab').filter({ hasText: /^Response/ }).first().click();
+
+    const body = editor.locator('[data-testid="timeline-panel-response"]').first().locator('.CodeMirror').first();
+    const foldControl = body.locator('.CodeMirror-foldgutter-open').first();
+
+    await expect(foldControl).toBeVisible({ timeout: 10_000 });
+
+    await foldControl.click();
+    await expect(body.locator('.CodeMirror-foldmarker')).toHaveCount(1);
+  });
 });
