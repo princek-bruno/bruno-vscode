@@ -1,4 +1,4 @@
-import { describe, test, expect, vi, beforeAll, afterAll } from 'vitest';
+import { describe, test, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -6,6 +6,7 @@ import path from 'path';
 vi.mock('vscode', () => ({}));
 
 const { mergeScripts } = await import('./collection');
+const { setUnsavedRoot, clearUnsavedRootForFile } = await import('../store/unsaved-roots');
 const { ScriptRuntime, formatErrorWithContextV2 } = await import('@usebruno/js');
 
 const COLLECTION_SCRIPT = 'const fromCollection = true;';
@@ -196,5 +197,55 @@ describe('an inherited script maps back to the file it was written in', () => {
 
     expect(context?.filePath).toBe('sub/folder.bru');
     expect(context?.errorLine).toBe(2);
+  });
+});
+
+describe('a root left unsaved in another editor is what gets merged', () => {
+  const collectionPath = path.join(os.tmpdir(), 'bruno-unsaved-root');
+  const folderPath = path.join(collectionPath, 'sub');
+  const folderFile = path.join(folderPath, 'folder.bru');
+  const collectionFile = path.join(collectionPath, 'collection.bru');
+  const DRAFT = "throw new Error('from the draft');";
+
+  const collection = { pathname: collectionPath, root: {} };
+  const tree = [
+    { type: 'folder', uid: 'f1', name: 'sub', pathname: folderPath, root: {} },
+    { type: 'http-request', uid: 'r1', name: 'Boom' }
+  ];
+
+  const merge = () => {
+    const request: any = { script: { req: '', res: '' }, tests: '' };
+    mergeScripts(collection as never, request, tree as never, 'sequential');
+    return request;
+  };
+
+  afterEach(() => {
+    clearUnsavedRootForFile(folderFile);
+    clearUnsavedRootForFile(collectionFile);
+  });
+
+  test('runs an unsaved folder script and attributes it to the folder file', () => {
+    setUnsavedRoot('folder', folderFile, { request: { script: { res: DRAFT } } });
+
+    const request = merge();
+
+    expect(request.script.res).toContain(DRAFT);
+    expect(request.script.resMetadata.segments).toMatchObject([{ type: 'folder', displayPath: 'sub/folder.bru' }]);
+  });
+
+  test('runs an unsaved collection script and attributes it to the collection file', () => {
+    setUnsavedRoot('collection', collectionFile, { request: { script: { res: DRAFT } } });
+
+    const request = merge();
+
+    expect(request.script.res).toContain(DRAFT);
+    expect(request.script.resMetadata.segments).toMatchObject([{ type: 'collection', displayPath: 'collection.bru' }]);
+  });
+
+  test('goes back to the saved script once the draft is gone', () => {
+    setUnsavedRoot('folder', folderFile, { request: { script: { res: DRAFT } } });
+    clearUnsavedRootForFile(folderFile);
+
+    expect(merge().script.res).toBe('');
   });
 });

@@ -23,19 +23,21 @@ export const focusErrorLine = (editor: any, line1Based: number): (() => void) =>
   }
 
   let disposed = false;
+  let timer: ReturnType<typeof setTimeout>;
+
   const dispose = () => {
     if (disposed) return;
     disposed = true;
+    clearTimeout(timer);
     try {
+      editor.off('change', dispose);
       editor.removeLineClass(line, LINE_CLASS_TARGET, LINE_CLASS_NAME);
       editor.removeLineClass(line, GUTTER_CLASS_TARGET, GUTTER_CLASS_NAME);
     } catch {}
   };
 
-  const timer = setTimeout(dispose, FLASH_DURATION_MS);
+  timer = setTimeout(dispose, FLASH_DURATION_MS);
+  editor.on('change', dispose);
 
-  return () => {
-    clearTimeout(timer);
-    dispose();
-  };
+  return dispose;
 };

@@ -10,7 +10,8 @@ import useWsEventListeners from 'utils/network/ws-event-listeners';
 
 import { ViewContainer, ViewData } from 'views';
 
-import { addTab } from 'providers/ReduxStore/slices/tabs';
+import { addTab, updateScriptPaneTab, setFocusErrorLine } from 'providers/ReduxStore/slices/tabs';
+import { updateSettingsSelectedTab, updatedFolderSettingsSelectedTab } from 'providers/ReduxStore/slices/collections';
 import {
   saveRequest,
   saveFolderRoot,
@@ -67,8 +68,9 @@ export default function Main(): React.ReactElement {
       }));
     } else if (viewData.viewType === 'collection-settings' && viewData.collectionUid) {
       // Collection settings uses a unique ID to allow opening alongside runner
+      const tabUid = `settings-${viewData.collectionUid}`;
       dispatch(addTab({
-        uid: `settings-${viewData.collectionUid}`,
+        uid: tabUid,
         collectionUid: viewData.collectionUid,
         type: 'collection-settings',
         preview: false
@@ -103,6 +105,36 @@ export default function Main(): React.ReactElement {
       }));
     }
   }, [viewData, dispatch, collections]);
+
+  useEffect(() => {
+    const focus = viewData.focusScriptError;
+    if (!focus) return;
+
+    const { scriptPhase, line } = focus;
+    const focusTab = (uid: string) => {
+      if (scriptPhase !== 'test') {
+        dispatch(updateScriptPaneTab({ uid, scriptPaneTab: scriptPhase }));
+      }
+      if (typeof line === 'number') {
+        dispatch(setFocusErrorLine({ uid, scriptPhase, line, requestedAt: Date.now() }));
+      }
+    };
+
+    if (viewData.viewType === 'collection-settings' && viewData.collectionUid) {
+      dispatch(updateSettingsSelectedTab({
+        collectionUid: viewData.collectionUid,
+        tab: scriptPhase === 'test' ? 'tests' : 'script'
+      }));
+      focusTab(`settings-${viewData.collectionUid}`);
+    } else if (viewData.viewType === 'folder-settings' && viewData.folderUid) {
+      dispatch(updatedFolderSettingsSelectedTab({
+        collectionUid: viewData.collectionUid,
+        folderUid: viewData.folderUid,
+        tab: scriptPhase === 'test' ? 'test' : 'script'
+      }));
+      focusTab(viewData.folderUid);
+    }
+  }, [viewData, dispatch]);
 
   useEffect(() => {
     if (mainSectionRef.current) {

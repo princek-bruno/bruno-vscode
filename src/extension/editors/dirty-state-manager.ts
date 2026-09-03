@@ -2,8 +2,10 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { registerHandler } from '../ipc/handlers';
+import { setUnsavedRoot, clearUnsavedRootForFile } from '../store/unsaved-roots';
 import { DIRTY_MARKER, dirtyMarkerOffsets, stripDirtyMarker } from '../utils/dirty-marker';
 import { hasRequestExtension } from '../utils/filesystem';
+import type { FolderRoot } from '@bruno-types';
 
 interface DirtyDocument {
   filePath: string;
@@ -41,6 +43,7 @@ export function unregisterDocument(filePath: string): void {
   const normalizedPath = normalizePath(filePath);
   registeredDocuments.delete(normalizedPath);
   dirtyDocuments.delete(normalizedPath);
+  clearUnsavedRootForFile(filePath);
 }
 
 export function getRegisteredDocument(filePath: string): vscode.TextDocument | undefined {
@@ -283,6 +286,7 @@ export function registerDirtyStateHandlers(): void {
       collectionUid: string;
       itemType: 'request' | 'folder' | 'collection';
       isDirty: boolean;
+      root?: FolderRoot;
     }];
 
     if (!payload) {
@@ -291,6 +295,9 @@ export function registerDirtyStateHandlers(): void {
     }
 
     if (payload.isDirty) {
+      if (payload.root && payload.itemType !== 'request') {
+        setUnsavedRoot(payload.itemType, payload.filePath, payload.root);
+      }
       await markDocumentDirty(
         payload.filePath,
         payload.itemUid,
@@ -298,6 +305,7 @@ export function registerDirtyStateHandlers(): void {
         payload.itemType
       );
     } else {
+      clearUnsavedRootForFile(payload.filePath);
       await markDocumentClean(payload.filePath);
     }
 

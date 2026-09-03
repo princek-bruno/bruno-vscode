@@ -11,6 +11,7 @@ import { posixifyPath, getCollectionFormat } from './filesystem';
 import { getRequestUid, getExampleUid } from '../cache/requestUids';
 import { uuid } from './common';
 import { preferencesUtil } from '../store/preferences';
+import { getUnsavedRoot } from '../store/unsaved-roots';
 
 const FORMAT_CONFIG = {
   yml: { collectionFile: 'opencollection.yml', folderFile: 'folder.yml' },
@@ -214,12 +215,21 @@ interface Request {
   tags?: string[];
 }
 
+const effectiveCollectionRoot = (collection: Collection): CollectionRoot =>
+  collection?.draft?.root
+    || (getUnsavedRoot('collection', collection?.pathname) as CollectionRoot | undefined)
+    || collection?.root
+    || {};
+
+const effectiveFolderRoot = (folder: Item): CollectionRoot | undefined =>
+  folder?.draft?.root
+    || (getUnsavedRoot('folder', folder?.pathname) as CollectionRoot | undefined)
+    || folder?.root;
+
 const mergeHeaders = (collection: Collection, request: Request, requestTreePath: Item[]): void => {
   const headers = new Map<string, string>();
 
-  const collectionHeaders: Header[] = collection?.draft?.root
-    ? get(collection, 'draft.root.request.headers', [])
-    : get(collection, 'root.request.headers', []);
+  const collectionHeaders: Header[] = get(effectiveCollectionRoot(collection), 'request.headers', []);
 
   collectionHeaders.forEach((header) => {
     if (header.enabled) {
@@ -233,8 +243,7 @@ const mergeHeaders = (collection: Collection, request: Request, requestTreePath:
 
   for (const i of requestTreePath) {
     if (i.type === 'folder') {
-      const folderRoot = i?.draft || i?.root;
-      const _headers: Header[] = get(folderRoot, 'request.headers', []);
+      const _headers: Header[] = get(effectiveFolderRoot(i), 'request.headers', []);
       _headers.forEach((header) => {
         if (header.enabled) {
           if (header.name.toLowerCase() === 'content-type') {
@@ -268,7 +277,7 @@ const rawValue = (_var: Variable): VariableValue => _var.value;
 
 const getItemVars = (item: Item, phase: 'req' | 'res'): Variable[] =>
   item.type === 'folder'
-    ? get(item?.draft || item?.root, `request.vars.${phase}`, [])
+    ? get(effectiveFolderRoot(item), `request.vars.${phase}`, [])
     : get(item, item?.draft ? `draft.request.vars.${phase}` : `request.vars.${phase}`, []);
 
 const collectVars = (
@@ -289,7 +298,7 @@ const collectVars = (
 };
 
 const mergeVars = (collection: Collection, request: Request, requestTreePath: Item[] = []): void => {
-  const collectionRoot = collection?.draft?.root || collection?.root || {};
+  const collectionRoot = effectiveCollectionRoot(collection);
   const collectionVariables: Record<string, VariableValue> = {};
   const folderVariables: Record<string, VariableValue> = {};
   const requestVariables: Record<string, VariableValue> = {};
@@ -409,7 +418,7 @@ const mergeScripts = (
   requestTreePath: Item[],
   scriptFlow: string
 ): void => {
-  const collectionRoot = collection?.draft?.root || collection?.root || {};
+  const collectionRoot = effectiveCollectionRoot(collection);
   const collectionPreReqScript = get(collectionRoot, 'request.script.req', '');
   const collectionPostResScript = get(collectionRoot, 'request.script.res', '');
   const collectionTests = get(collectionRoot, 'request.tests', '');
@@ -441,7 +450,7 @@ const mergeScripts = (
 
   for (const i of requestTreePath) {
     if (i.type === 'folder') {
-      const folderRoot = i?.draft || i?.root;
+      const folderRoot = effectiveFolderRoot(i);
       const folderFilePath = path.join(i.pathname || '', config.folderFile);
       const folderSource: SegmentSource = {
         type: 'folder',
@@ -934,14 +943,14 @@ const getEnvVars = (environment: Environment | null | undefined = {}): Record<st
 };
 
 const mergeAuth = (collection: Collection, request: Request, requestTreePath: Item[]): void => {
-  const collectionRoot = collection?.draft?.root || collection?.root || {};
+  const collectionRoot = effectiveCollectionRoot(collection);
   const collectionAuth = get(collectionRoot, 'request.auth', { mode: 'none' });
   let effectiveAuth = collectionAuth;
   let lastFolderWithAuth: Item | null = null;
 
   for (const i of requestTreePath) {
     if (i.type === 'folder') {
-      const folderRoot = i?.draft || i?.root;
+      const folderRoot = effectiveFolderRoot(i);
       const folderAuth = get(folderRoot, 'request.auth');
       if (folderAuth && folderAuth.mode && folderAuth.mode !== 'none' && folderAuth.mode !== 'inherit') {
         effectiveAuth = folderAuth;

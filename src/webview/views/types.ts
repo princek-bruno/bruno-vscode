@@ -44,6 +44,7 @@ export interface ViewData {
   folderUid?: string;
   collectionPath?: string;
   itemPath?: string;
+  focusScriptError?: { scriptPhase: string; line?: number };
 }
 
 /**

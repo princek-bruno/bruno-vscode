@@ -6,7 +6,8 @@ import { SCRIPT_ERROR_PHASES, getScriptError } from '@bruno-types';
 import ErrorBanner from 'ui/ErrorBanner';
 import CodeSnippet from 'ui/CodeSnippet';
 import { getTreePathFromCollectionToItem } from 'utils/collections';
-import { normalizePath } from 'utils/common/path';
+import { normalizePath, getAbsoluteFilePath } from 'utils/common/path';
+import { ipcRenderer } from 'utils/ipc';
 import { updateRequestPaneTab, updateScriptPaneTab, setFocusErrorLine } from 'providers/ReduxStore/slices/tabs';
 import { isTabForItemPresent } from 'selectors/tab';
 import StyledWrapper from './StyledWrapper';
@@ -82,13 +83,30 @@ const ScriptErrorCard = ({ title, message, errorContext, scriptPhase, item, coll
   const errorLine = errorContext.errorLine;
 
   const hasRequestTab =useSelector(isTabForItemPresent({ itemUid: item?.uid as string }));
-  const canNavigate = source?.sourceType === 'request'
-    && typeof errorLine === 'number'
-    && SCRIPTABLE_REQUEST_TYPES.includes(item?.type as string)
-    && hasRequestTab;
+  const collectionPathname = normalizePath(collection?.pathname as string);
+  const isInheritedSource = source?.sourceType === 'folder' || source?.sourceType === 'collection';
+  const canNavigate = isInheritedSource
+    ? !!collectionPathname
+    : source?.sourceType === 'request'
+      && typeof errorLine === 'number'
+      && SCRIPTABLE_REQUEST_TYPES.includes(item?.type as string)
+      && hasRequestTab;
+
+  const revealInheritedSource = () => {
+    ipcRenderer.invoke('renderer:reveal-script-error-source', {
+      filePath: getAbsoluteFilePath(collectionPathname, filePath!),
+      scriptPhase,
+      line: typeof errorLine === 'number' ? errorLine : undefined
+    });
+  };
 
   const navigateToErrorLine = () => {
     if (!canNavigate) return;
+
+    if (isInheritedSource) {
+      revealInheritedSource();
+      return;
+    }
 
     const uid = item!.uid as string;
     if (scriptPhase === 'test') {
@@ -128,7 +146,9 @@ const ScriptErrorCard = ({ title, message, errorContext, scriptPhase, item, coll
             tabIndex={canNavigate ? 0 : undefined}
             onClick={navigateToErrorLine}
             onKeyDown={onFilePathKeyDown}
-            title={canNavigate ? `Go to line ${errorLine} in ${filePath}` : undefined}
+            title={canNavigate
+              ? (isInheritedSource ? `Open ${filePath}` : `Go to line ${errorLine} in ${filePath}`)
+              : undefined}
           >
             <span>{filePath}</span>
             {canNavigate && <IconExternalLink size={12} className="flex-shrink-0" />}

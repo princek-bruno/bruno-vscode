@@ -1,9 +1,32 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import type { Page, Frame } from '@playwright/test';
 import { test, expect } from '../utils/fixtures';
-import { openBrunoSidebar, createCollection, openRequest, sendRequest, findCollectionDir } from '../utils/page/actions';
+import {
+  openBrunoSidebar,
+  createCollection,
+  createFolder,
+  openRequest,
+  sendRequest,
+  findCollectionDir,
+  setCodeMirrorValue
+} from '../utils/page/actions';
 
 const TEST_SERVER = 'http://127.0.0.1:8081';
+
+async function frameWith(page: Page, marker: string, timeout = 15_000): Promise<Frame> {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    for (const frame of page.frames()) {
+      if (frame === page.mainFrame()) continue;
+      try {
+        if ((await frame.locator(marker).count()) > 0) return frame;
+      } catch {}
+    }
+    await page.waitForTimeout(400);
+  }
+  throw new Error(`No webview frame with ${marker} within ${timeout}ms`);
+}
 
 // `bru.setEnvVar` rejects names with spaces, so the failure comes from the sandbox itself.
 const FAILING_REQUEST_BRU = [
@@ -231,6 +254,95 @@ test.describe('Script errors in the response pane', () => {
     await editor.locator('[data-testid="script-error-icon"]').first().click();
     await expect(card).toBeVisible();
     await expect(card.locator('[data-testid="script-error-title"]')).toHaveText('Pre-Request Script Error');
+  });
+
+  test('a folder script that was never saved reports its error and opens on click', async ({ page, tmpDir }) => {
+    const sidebar = await openBrunoSidebar(page);
+    const collectionName = 'Unsaved Folder Script';
+
+    await createCollection(page, sidebar, collectionName, tmpDir, 'bru');
+    await createFolder(sidebar, collectionName, 'sub');
+
+    const collectionDir = findCollectionDir(tmpDir);
+    fs.writeFileSync(path.join(collectionDir, 'sub', 'Boom.bru'), [
+      'meta {', '  name: Boom', '  type: http', '  seq: 1', '}', '',
+      'get {', `  url: ${TEST_SERVER}/capture`, '  body: none', '  auth: inherit', '}', ''
+    ].join('\n'), 'utf8');
+
+    await sidebar.locator('[data-testid="sidebar-collection-item-row"]').filter({ hasText: 'sub' }).click();
+
+    const settings = await frameWith(page, '[data-testid="folder-settings"]');
+    await settings.locator('[role="tab"]').filter({ hasText: 'Script' }).first().click();
+    await settings.locator('.tab-trigger').filter({ hasText: 'Post Response' }).first().click();
+
+    const folderScript = settings.locator('[data-testid="folder-post-response-script-editor"]');
+    await expect(folderScript.locator('.CodeMirror')).toBeVisible({ timeout: 15_000 });
+    await setCodeMirrorValue(page, folderScript.locator('.CodeMirror'), "throw new Error('boom from the folder draft');");
+
+    const editor = await openRequest(page, sidebar, collectionName, 'Boom');
+    await sendRequest(editor, 200);
+
+    const card = editor.locator('[data-testid="script-error-card"]').first();
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    await expect(card.locator('[data-testid="script-error-title"]')).toHaveText('Post-Response Script Error');
+    await expect(card.locator('[data-testid="script-error-source-label"]')).toContainText('Folder');
+    await expect(card.locator('[data-testid="script-error-file-path"]')).toHaveText('sub/folder.bru');
+    await expect(card.locator('[data-testid="code-line-error"]')).toContainText('boom from the folder draft');
+
+    await card.locator('[data-testid="script-error-file-path"]').click();
+    await expect(folderScript).toBeVisible({ timeout: 15_000 });
+    await expect(folderScript.locator('.cm-error-line-flash')).toHaveCount(1);
+  });
+
+  test('following a folder error does not lock the editor to the errored script', async ({ page, tmpDir }) => {
+    const sidebar = await openBrunoSidebar(page);
+    const collectionName = 'Folder Error Editing';
+
+    await createCollection(page, sidebar, collectionName, tmpDir, 'bru');
+    await createFolder(sidebar, collectionName, 'sub');
+
+    const collectionDir = findCollectionDir(tmpDir);
+    fs.writeFileSync(path.join(collectionDir, 'sub', 'folder.bru'), [
+      'meta {', '  name: sub', '}', '',
+      'script:pre-request {',
+      "  throw new Error('boom before the request');",
+      '}',
+      ''
+    ].join('\n'), 'utf8');
+    fs.writeFileSync(path.join(collectionDir, 'sub', 'Boom.bru'), [
+      'meta {', '  name: Boom', '  type: http', '  seq: 1', '}', '',
+      'get {', `  url: ${TEST_SERVER}/capture`, '  body: none', '  auth: inherit', '}', ''
+    ].join('\n'), 'utf8');
+
+    await sidebar.locator('[data-testid="sidebar-collection-item-row"]').filter({ hasText: 'sub' })
+      .locator('[data-testid="folder-chevron"]').click();
+
+    const editor = await openRequest(page, sidebar, collectionName, 'Boom');
+    await sendRequest(editor);
+
+    const card = editor.locator('[data-testid="script-error-card"]').first();
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    await expect(card.locator('[data-testid="script-error-title"]')).toHaveText('Pre-Request Script Error');
+    await card.locator('[data-testid="script-error-file-path"]').click();
+
+    const settings = await frameWith(page, '[data-testid="folder-settings"]');
+    const preRequest = settings.locator('[data-testid="folder-pre-request-script-editor"]');
+    await expect(preRequest).toBeVisible({ timeout: 15_000 });
+    await expect(preRequest.locator('.cm-error-line-flash')).toHaveCount(1);
+
+    await setCodeMirrorValue(page, preRequest.locator('.CodeMirror'), "throw new Error('edited');");
+    await expect(preRequest.locator('.cm-error-line-flash')).toHaveCount(0);
+
+    await settings.locator('.tab-trigger').filter({ hasText: 'Post Response' }).first().click();
+    const postResponse = settings.locator('[data-testid="folder-post-response-script-editor"]');
+    await expect(postResponse).toBeVisible();
+
+    await setCodeMirrorValue(page, postResponse.locator('.CodeMirror'), 'const edited = 1;');
+
+    await expect(postResponse).toBeVisible();
+    await expect(preRequest).toBeHidden();
+    await expect(postResponse).toContainText('const edited = 1;');
+    await expect(postResponse.locator('.cm-error-line-flash')).toHaveCount(0);
   });
 
   test('a failing pre-request script wins over an empty url', async ({ page, tmpDir }) => {
